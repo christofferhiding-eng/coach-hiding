@@ -1,25 +1,3 @@
-import React from "react";
-import { ScrollView, StyleSheet } from "react-native";
-import WelcomeCard from "../../components/dashboard/WelcomeCard";
+import DashboardScreen from "@/features/dashboard/DashboardScreen";
 
-export default function HomeScreen() {
-  return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-    >
-      <WelcomeCard />
-    </ScrollView>
-  );
-}
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#0B1220",
-  },
-  content: {
-    padding: 20,
-    paddingTop: 60,
-  },
-});
+export default DashboardScreen;
