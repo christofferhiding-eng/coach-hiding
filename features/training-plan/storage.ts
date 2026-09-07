@@ -1,540 +1,485 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+import { trainingWeeks } from "./data";
+
 import {
   TrainingSession,
   TrainingWeek,
 } from "./types";
 
-import { trainingWeeks } from "./data";
+const STORAGE_KEY =
+  "hiding-coach-training-weeks";
 
-const TRAINING_PLAN_STORAGE_KEY =
-  "training-plan";
+/**
+ * Alla testveckor som ska finnas.
+ *
+ * trainingWeeks innehåller redan både
+ * Anna och Eric.
+ */
+function getSeedWeeks(): TrainingWeek[] {
+  return trainingWeeks;
+}
 
+/**
+ * Skapar en fristående kopia av
+ * träningsplanen.
+ */
+function cloneTrainingWeeks(
+  weeks: TrainingWeek[]
+): TrainingWeek[] {
+  return weeks.map((week) => ({
+    ...week,
+    sessions: week.sessions.map(
+      (session) => ({
+        ...session,
+      })
+    ),
+  }));
+}
+
+/**
+ * Tar bort eventuella dubbletter av veckor.
+ *
+ * En vecka identifieras av sitt id.
+ */
+function dedupeWeeks(
+  weeks: TrainingWeek[]
+): TrainingWeek[] {
+  const seen = new Set<string>();
+
+  return weeks.filter((week) => {
+    if (seen.has(week.id)) {
+      return false;
+    }
+
+    seen.add(week.id);
+    return true;
+  });
+}
+
+/**
+ * Hämtar träningsplanen.
+ *
+ * Befintlig data behålls.
+ * Nya veckor och nya pass läggs till
+ * automatiskt.
+ */
 export async function getStoredTrainingWeeks(): Promise<
   TrainingWeek[]
 > {
-  const storedPlan =
-    await AsyncStorage.getItem(
-      TRAINING_PLAN_STORAGE_KEY
-    );
-
-  if (!storedPlan) {
-    const initialWeeks =
-      normalizeWeeks(trainingWeeks);
-
-    await saveTrainingWeeks(
-      initialWeeks
-    );
-
-    return initialWeeks;
-  }
-
-  const weeks: TrainingWeek[] =
-    JSON.parse(storedPlan);
-
-  return normalizeWeeks(weeks);
-}
-
-export async function saveTrainingWeeks(
-  weeks: TrainingWeek[]
-): Promise<void> {
-  await AsyncStorage.setItem(
-    TRAINING_PLAN_STORAGE_KEY,
-    JSON.stringify(weeks)
-  );
-}
-
-export async function addTrainingSession(
-  session: TrainingSession
-): Promise<void> {
-  const weeks =
-    await getStoredTrainingWeeks();
-
-  const weekStart =
-    getMonday(session.date);
-
-  let week = weeks.find(
-    (item) =>
-      item.startDate === weekStart
-  );
-
-  if (!week) {
-    week = createWeek(
-      weekStart
-    );
-
-    weeks.push(week);
-
-    sortWeeks(weeks);
-  }
-
-  week.sessions.push(session);
-
-  await saveTrainingWeeks(weeks);
-}
-
-export async function copyTrainingSession(
-  session: TrainingSession,
-  newDate: string,
-  newSlot: TrainingSession["slot"]
-): Promise<void> {
-  const weeks =
-    await getStoredTrainingWeeks();
-
-  const newSession: TrainingSession = {
-    ...session,
-
-    id: `${session.athleteId}-${newDate}-${newSlot}-${Date.now()}`,
-
-    date: newDate,
-
-    day: getDayName(newDate),
-
-    slot: newSlot,
-  };
-
-  const targetWeekStart =
-    getMonday(newDate);
-
-  let targetWeek = weeks.find(
-    (week) =>
-      week.startDate ===
-      targetWeekStart
-  );
-
-  if (!targetWeek) {
-    targetWeek =
-      createWeek(
-        targetWeekStart
+  try {
+    const stored =
+      await AsyncStorage.getItem(
+        STORAGE_KEY
       );
 
-    weeks.push(targetWeek);
+    const seedWeeks =
+      getSeedWeeks();
 
-    sortWeeks(weeks);
-  }
+    /**
+     * Ingen sparad data ännu.
+     */
+    if (!stored) {
+      const initialWeeks =
+        cloneTrainingWeeks(
+          seedWeeks
+        );
 
-  targetWeek.sessions.push(
-    newSession
-  );
+      await AsyncStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify(
+          initialWeeks
+        )
+      );
 
-  await saveTrainingWeeks(
-    weeks
-  );
-}
+      return initialWeeks;
+    }
 
-export async function updateTrainingSession(
-  session: TrainingSession
-): Promise<void> {
-  const weeks =
-    await getStoredTrainingWeeks();
+    const parsed =
+      JSON.parse(stored);
 
-  const oldWeekIndex =
-    weeks.findIndex((week) =>
-      week.sessions.some(
-        (existingSession) =>
-          existingSession.id ===
-          session.id
+    const storedWeeks: TrainingWeek[] =
+      Array.isArray(parsed)
+        ? parsed
+        : [];
+
+    /**
+     * Börja med befintlig data
+     * och ta bort eventuella dubbletter.
+     */
+    const mergedWeeks =
+      dedupeWeeks(
+        cloneTrainingWeeks(
+          storedWeeks
+        )
+      );
+
+    /**
+     * Lägg till nya veckor och
+     * nya träningspass.
+     */
+    for (
+      const seedWeek of seedWeeks
+    ) {
+      const existingWeekIndex =
+        mergedWeeks.findIndex(
+          (week) =>
+            week.id ===
+            seedWeek.id
+        );
+
+      /**
+       * Veckan finns inte.
+       */
+      if (
+        existingWeekIndex === -1
+      ) {
+        mergedWeeks.push({
+          ...seedWeek,
+          sessions:
+            seedWeek.sessions.map(
+              (session) => ({
+                ...session,
+              })
+            ),
+        });
+
+        continue;
+      }
+
+      /**
+       * Veckan finns redan.
+       *
+       * Kontrollera passen separat.
+       */
+      const existingWeek =
+        mergedWeeks[
+          existingWeekIndex
+        ];
+
+      const existingSessionIds =
+        new Set(
+          existingWeek.sessions.map(
+            (session) =>
+              session.id
+          )
+        );
+
+      const missingSessions =
+        seedWeek.sessions.filter(
+          (session) =>
+            !existingSessionIds.has(
+              session.id
+            )
+        );
+
+      /**
+       * Lägg till de pass som saknas.
+       */
+      if (
+        missingSessions.length > 0
+      ) {
+        mergedWeeks[
+          existingWeekIndex
+        ] = {
+          ...existingWeek,
+          sessions: [
+            ...existingWeek.sessions,
+            ...missingSessions.map(
+              (session) => ({
+                ...session,
+              })
+            ),
+          ],
+        };
+      }
+    }
+
+    /**
+     * Säkerställ att vi aldrig
+     * sparar dubbletter.
+     */
+    const finalWeeks =
+      dedupeWeeks(
+        mergedWeeks
+      );
+
+    await AsyncStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify(
+        finalWeeks
       )
     );
 
-  if (oldWeekIndex === -1) {
-    throw new Error(
-      "Kunde inte hitta passet som skulle uppdateras."
-    );
-  }
-
-  const oldWeek =
-    weeks[oldWeekIndex];
-
-  const sessionIndex =
-    oldWeek.sessions.findIndex(
-      (existingSession) =>
-        existingSession.id ===
-        session.id
+    return finalWeeks;
+  } catch (error) {
+    console.error(
+      "Kunde inte läsa träningsplanen:",
+      error
     );
 
-  const newWeekStart =
-    getMonday(session.date);
-
-  const oldWeekStart =
-    oldWeek.startDate;
-
-  if (
-    oldWeekStart ===
-    newWeekStart
-  ) {
-    oldWeek.sessions[
-      sessionIndex
-    ] = session;
-
-    await saveTrainingWeeks(
-      weeks
+    return cloneTrainingWeeks(
+      getSeedWeeks()
     );
-
-    return;
   }
+}
 
-  oldWeek.sessions.splice(
-    sessionIndex,
-    1
-  );
-
-  let newWeek = weeks.find(
-    (week) =>
-      week.startDate ===
-      newWeekStart
-  );
-
-  if (!newWeek) {
-    newWeek =
-      createWeek(
-        newWeekStart
-      );
-
-    weeks.push(newWeek);
-
-    sortWeeks(weeks);
-  }
-
-  newWeek.sessions.push(
-    session
-  );
-
-  await saveTrainingWeeks(
-    weeks
+/**
+ * Sparar hela träningsplanen.
+ */
+async function saveTrainingWeeks(
+  weeks: TrainingWeek[]
+) {
+  await AsyncStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify(
+      dedupeWeeks(weeks)
+    )
   );
 }
 
-/*
- * Flyttar ett befintligt pass
- * till ett nytt datum och/eller
- * en ny tid på dagen.
- *
- * Den här funktionen kommer
- * användas av drag-and-drop
- * på desktop.
+/**
+ * Lägger till ett nytt träningspass.
  */
-export async function moveTrainingSession(
-  sessionId: string,
-  newDate: string,
-  newSlot?: TrainingSession["slot"]
-): Promise<void> {
+export async function addTrainingSession(
+  session: TrainingSession
+): Promise<TrainingSession> {
   const weeks =
     await getStoredTrainingWeeks();
 
-  let sourceWeek: TrainingWeek | null =
-    null;
-
-  let sessionIndex = -1;
-
-  for (const week of weeks) {
-    const index =
-      week.sessions.findIndex(
-        (session) =>
-          session.id ===
-          sessionId
-      );
-
-    if (index !== -1) {
-      sourceWeek = week;
-      sessionIndex = index;
-      break;
-    }
-  }
+  const weekIndex =
+    weeks.findIndex(
+      (week) =>
+        session.date >=
+          week.startDate &&
+        session.date <=
+          addDays(
+            week.startDate,
+            6
+          )
+    );
 
   if (
-    !sourceWeek ||
-    sessionIndex === -1
+    weekIndex === -1
   ) {
     throw new Error(
-      "Kunde inte hitta passet som skulle flyttas."
+      "Kunde inte hitta veckan för träningspasset."
     );
   }
 
-  const session =
-    sourceWeek.sessions[
-      sessionIndex
-    ];
+  const updatedWeeks =
+    [...weeks];
 
-  const targetWeekStart =
-    getMonday(newDate);
-
-  /*
-   * Om passet flyttas inom
-   * samma vecka behöver vi bara
-   * uppdatera passet.
-   */
-  if (
-    sourceWeek.startDate ===
-    targetWeekStart
-  ) {
-    sourceWeek.sessions[
-      sessionIndex
-    ] = {
-      ...session,
-      date: newDate,
-      day: getDayName(newDate),
-      slot:
-        newSlot ??
-        session.slot,
-    };
-
-    await saveTrainingWeeks(
-      weeks
-    );
-
-    return;
-  }
-
-  /*
-   * Om passet flyttas till en
-   * annan vecka tar vi bort det
-   * från den gamla veckan.
-   */
-  sourceWeek.sessions.splice(
-    sessionIndex,
-    1
-  );
-
-  let targetWeek = weeks.find(
-    (week) =>
-      week.startDate ===
-      targetWeekStart
-  );
-
-  /*
-   * Om målveckan inte finns
-   * skapas den automatiskt.
-   */
-  if (!targetWeek) {
-    targetWeek =
-      createWeek(
-        targetWeekStart
-      );
-
-    weeks.push(targetWeek);
-  }
-
-  targetWeek.sessions.push({
-    ...session,
-    date: newDate,
-    day: getDayName(newDate),
-    slot:
-      newSlot ??
-      session.slot,
-  });
-
-  sortWeeks(weeks);
+  updatedWeeks[
+    weekIndex
+  ] = {
+    ...updatedWeeks[
+      weekIndex
+    ],
+    sessions: [
+      ...updatedWeeks[
+        weekIndex
+      ].sessions,
+      session,
+    ],
+  };
 
   await saveTrainingWeeks(
-    weeks
+    updatedWeeks
   );
+
+  return session;
 }
 
+/**
+ * Uppdaterar ett befintligt träningspass.
+ */
+export async function updateTrainingSession(
+  updatedSession: TrainingSession
+): Promise<TrainingSession> {
+  const weeks =
+    await getStoredTrainingWeeks();
+
+  const updatedWeeks =
+    weeks.map((week) => ({
+      ...week,
+      sessions:
+        week.sessions.filter(
+          (session) =>
+            session.id !==
+            updatedSession.id
+        ),
+    }));
+
+  const targetWeekIndex =
+    updatedWeeks.findIndex(
+      (week) =>
+        updatedSession.date >=
+          week.startDate &&
+        updatedSession.date <=
+          addDays(
+            week.startDate,
+            6
+          )
+    );
+
+  if (
+    targetWeekIndex === -1
+  ) {
+    throw new Error(
+      "Kunde inte hitta veckan för det uppdaterade träningspasset."
+    );
+  }
+
+  updatedWeeks[
+    targetWeekIndex
+  ] = {
+    ...updatedWeeks[
+      targetWeekIndex
+    ],
+    sessions: [
+      ...updatedWeeks[
+        targetWeekIndex
+      ].sessions,
+      updatedSession,
+    ],
+  };
+
+  await saveTrainingWeeks(
+    updatedWeeks
+  );
+
+  return updatedSession;
+}
+
+/**
+ * Tar bort ett träningspass.
+ */
 export async function deleteTrainingSession(
   sessionId: string
 ): Promise<void> {
   const weeks =
     await getStoredTrainingWeeks();
 
-  for (const week of weeks) {
-    const sessionIndex =
-      week.sessions.findIndex(
-        (session) =>
-          session.id ===
-          sessionId
-      );
+  const updatedWeeks =
+    weeks.map((week) => ({
+      ...week,
+      sessions:
+        week.sessions.filter(
+          (session) =>
+            session.id !==
+            sessionId
+        ),
+    }));
 
-    if (sessionIndex !== -1) {
-      week.sessions.splice(
-        sessionIndex,
-        1
-      );
-
-      /*
-       * Veckan tas inte bort när
-       * det sista passet tas bort.
-       */
-
-      await saveTrainingWeeks(
-        weeks
-      );
-
-      return;
-    }
-  }
-
-  throw new Error(
-    "Kunde inte hitta passet som skulle tas bort."
+  await saveTrainingWeeks(
+    updatedWeeks
   );
 }
 
+/**
+ * Kopierar ett träningspass
+ * till ett nytt datum.
+ */
+export async function copyTrainingSession(
+  sourceSession: TrainingSession,
+  targetDate: string,
+  targetSlot:
+    | "morning"
+    | "afternoon"
+    | "evening"
+): Promise<TrainingSession> {
+  const newSession: TrainingSession =
+    {
+      ...sourceSession,
+      id: `${sourceSession.athleteId}-${targetDate}-${targetSlot}-${Date.now()}`,
+      date: targetDate,
+      day: getDayName(
+        targetDate
+      ),
+      slot: targetSlot,
+    };
+
+  await addTrainingSession(
+    newSession
+  );
+
+  return newSession;
+}
+
+/**
+ * Skapar en ny tom träningsvecka.
+ */
 export async function addTrainingWeek(
   startDate: string
 ): Promise<TrainingWeek> {
   const weeks =
     await getStoredTrainingWeeks();
 
-  const normalizedStartDate =
-    getMonday(startDate);
-
-  const existingWeek =
-    weeks.find(
-      (week) =>
-        week.startDate ===
-        normalizedStartDate
+  const highestWeekNumber =
+    weeks.reduce(
+      (
+        highest,
+        week
+      ) =>
+        Math.max(
+          highest,
+          week.weekNumber
+        ),
+      0
     );
 
-  if (existingWeek) {
-    return existingWeek;
-  }
+  const weekNumber =
+    highestWeekNumber + 1;
 
-  const newWeek =
-    createWeek(
-      normalizedStartDate
-    );
+  const newWeek: TrainingWeek =
+    {
+      id: `week-${weekNumber}-${Date.now()}`,
+      weekNumber,
+      title: `Vecka ${weekNumber}`,
+      startDate,
+      sessions: [],
+    };
 
-  weeks.push(newWeek);
-
-  sortWeeks(weeks);
+  const updatedWeeks = [
+    ...weeks,
+    newWeek,
+  ];
 
   await saveTrainingWeeks(
-    weeks
+    updatedWeeks
   );
 
   return newWeek;
 }
 
-function createWeek(
-  startDate: string
-): TrainingWeek {
-  return {
-    id: `week-${startDate}`,
-
-    weekNumber:
-      getISOWeekNumber(
-        new Date(startDate)
-      ),
-
-    title: formatWeekTitle(
-      startDate
-    ),
-
-    startDate,
-
-    sessions: [],
-  };
-}
-
-function normalizeWeeks(
-  weeks: TrainingWeek[]
-): TrainingWeek[] {
-  const normalized =
-    weeks.map((week) => {
-      const sessions =
-        week.sessions ?? [];
-
-      let startDate =
-        week.startDate;
-
-      if (!startDate) {
-        const firstSession =
-          sessions[0];
-
-        if (firstSession) {
-          startDate =
-            getMonday(
-              firstSession.date
-            );
-        }
-      }
-
-      if (!startDate) {
-        startDate =
-          getMonday(
-            new Date()
-              .toISOString()
-              .slice(0, 10)
-          );
-      }
-
-      return {
-        ...week,
-
-        id:
-          week.id ??
-          `week-${startDate}`,
-
-        weekNumber:
-          week.weekNumber ??
-          getISOWeekNumber(
-            new Date(startDate)
-          ),
-
-        title:
-          week.title ??
-          formatWeekTitle(
-            startDate
-          ),
-
-        startDate,
-
-        sessions,
-      };
-    });
-
-  sortWeeks(normalized);
-
-  return normalized;
-}
-
-function sortWeeks(
-  weeks: TrainingWeek[]
-) {
-  weeks.sort((a, b) =>
-    a.startDate.localeCompare(
-      b.startDate
-    )
-  );
-}
-
-function getMonday(
-  date: string
+/**
+ * Hjälpfunktioner.
+ */
+function addDays(
+  date: string,
+  amount: number
 ): string {
   const result =
     new Date(date);
 
-  const day =
-    result.getDay();
-
-  const difference =
-    day === 0
-      ? -6
-      : 1 - day;
-
   result.setDate(
     result.getDate() +
-      difference
+      amount
   );
 
-  return formatISODate(
-    result
-  );
-}
-
-function formatISODate(
-  date: Date
-): string {
   const year =
-    date.getFullYear();
+    result.getFullYear();
 
-  const month = String(
-    date.getMonth() + 1
-  ).padStart(2, "0");
+  const month =
+    String(
+      result.getMonth() + 1
+    ).padStart(2, "0");
 
-  const day = String(
-    date.getDate()
-  ).padStart(2, "0");
+  const day =
+    String(
+      result.getDate()
+    ).padStart(2, "0");
 
   return `${year}-${month}-${day}`;
 }
@@ -549,58 +494,5 @@ function getDayName(
     {
       weekday: "short",
     }
-  );
-}
-
-function formatWeekTitle(
-  monday: string
-): string {
-  const date =
-    new Date(monday);
-
-  return `Vecka ${getISOWeekNumber(
-    date
-  )}`;
-}
-
-function getISOWeekNumber(
-  date: Date
-): number {
-  const target =
-    new Date(
-      Date.UTC(
-        date.getFullYear(),
-        date.getMonth(),
-        date.getDate()
-      )
-    );
-
-  const dayNumber =
-    target.getUTCDay() || 7;
-
-  target.setUTCDate(
-    target.getUTCDate() +
-      4 -
-      dayNumber
-  );
-
-  const yearStart =
-    new Date(
-      Date.UTC(
-        target.getUTCFullYear(),
-        0,
-        1
-      )
-    );
-
-  return Math.ceil(
-    (
-      (
-        target.getTime() -
-        yearStart.getTime()
-      ) /
-        86400000 +
-      1
-    ) / 7
   );
 }

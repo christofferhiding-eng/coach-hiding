@@ -1,5 +1,9 @@
 import React from "react";
-import { StyleSheet, Text, TextProps } from "react-native";
+import {
+  StyleSheet,
+  Text,
+  TextProps,
+} from "react-native";
 
 import { Colors } from "@/constants/design";
 
@@ -13,7 +17,10 @@ export default function BodyText({
   ...props
 }: BodyTextProps) {
   return (
-    <Text style={[styles.text, style]} {...props}>
+    <Text
+      style={[styles.text, style]}
+      {...props}
+    >
       {children}
     </Text>
   );

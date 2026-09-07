@@ -2,14 +2,12 @@ import React, {
   useEffect,
   useState,
 } from "react";
-
 import {
   Pressable,
   StyleSheet,
   View,
   useWindowDimensions,
 } from "react-native";
-
 import {
   Stack,
   useLocalSearchParams,
@@ -91,7 +89,9 @@ export default function CoachAthleteScreen() {
 
   const [weekStart, setWeekStart] =
     useState<string>(() =>
-      getMonday(new Date())
+      getMonday(
+        new Date()
+      )
     );
 
   const [selectedDate, setSelectedDate] =
@@ -219,6 +219,9 @@ export default function CoachAthleteScreen() {
         weekStart
       )
     );
+
+  const selectedSession =
+    editingSession;
 
   async function handleSaveSession(
     data: {
@@ -549,24 +552,20 @@ export default function CoachAthleteScreen() {
                   styles.calendarColumnDesktop,
               ]}
             >
-              <View
-                style={styles.calendar}
-              >
-                {days.map((day) => (
-                  <DayRow
-                    key={day.date}
-                    day={day}
-                    onAddSession={() =>
-                      handleAddSession(
-                        day.date
-                      )
-                    }
-                    onEditSession={
-                      handleEditSession
-                    }
-                  />
-                ))}
-              </View>
+              {days.map((day) => (
+                <DayRow
+                  key={day.date}
+                  day={day}
+                  onAddSession={() =>
+                    handleAddSession(
+                      day.date
+                    )
+                  }
+                  onEditSession={
+                    handleEditSession
+                  }
+                />
+              ))}
             </View>
 
             {isDesktop && (
@@ -780,7 +779,9 @@ function DayRow({
     day: string;
     sessions: TrainingSession[];
   };
+
   onAddSession: () => void;
+
   onEditSession: (
     session: TrainingSession
   ) => void;
@@ -879,7 +880,7 @@ function DayRow({
                     style={
                       styles.desktopDescription
                     }
-                    numberOfLines={2}
+                    numberOfLines={1}
                   >
                     {
                       session.description
@@ -925,68 +926,46 @@ function createWeekDays(
       return {
         date,
         day,
-        sessions: sessions.filter(
-          (session) =>
-            session.date === date
-        ),
+        sessions:
+          sessions
+            .filter(
+              (session) =>
+                session.date ===
+                date
+            )
+            .sort(
+              (a, b) =>
+                getSlotOrder(
+                  a.slot
+                ) -
+                getSlotOrder(
+                  b.slot
+                )
+            ),
       };
     }
   );
 }
 
-function parseDate(
-  date: string
+function getSlotOrder(
+  slot:
+    | "morning"
+    | "afternoon"
+    | "evening"
 ) {
-  const [
-    year,
-    month,
-    day,
-  ] = date
-    .split("-")
-    .map(Number);
+  if (
+    slot === "morning"
+  ) {
+    return 1;
+  }
 
-  return new Date(
-    Date.UTC(
-      year,
-      month - 1,
-      day
-    )
-  );
-}
+  if (
+    slot === "afternoon"
+  ) {
+    return 2;
+  }
 
-function getMonday(
-  date: Date
-) {
-  const result =
-    new Date(date);
-
-  const day =
-    result.getDay();
-
-  const difference =
-    day === 0
-      ? -6
-      : 1 - day;
-
-  result.setDate(
-    result.getDate() +
-      difference
-  );
-
-  const year =
-    result.getFullYear();
-
-  const month =
-    String(
-      result.getMonth() + 1
-    ).padStart(2, "0");
-
-  const dayOfMonth =
-    String(
-      result.getDate()
-    ).padStart(2, "0");
-
-  return `${year}-${month}-${dayOfMonth}`;
+  return 3;
 }
 
 function addDays(
@@ -1001,41 +980,79 @@ function addDays(
       amount
   );
 
+  return formatISODate(
+    result
+  );
+}
+
+function parseDate(
+  date: string
+) {
+  return new Date(
+    `${date}T00:00:00Z`
+  );
+}
+
+function formatISODate(
+  date: Date
+) {
   const year =
-    result.getUTCFullYear();
+    date.getUTCFullYear();
 
   const month =
     String(
-      result.getUTCMonth() + 1
+      date.getUTCMonth() + 1
     ).padStart(2, "0");
 
   const day =
     String(
-      result.getUTCDate()
+      date.getUTCDate()
     ).padStart(2, "0");
 
   return `${year}-${month}-${day}`;
+}
+
+function getMonday(
+  date: Date
+) {
+  const result =
+    new Date(date);
+
+  const day =
+    result.getUTCDay();
+
+  const difference =
+    day === 0
+      ? -6
+      : 1 - day;
+
+  result.setUTCDate(
+    result.getUTCDate() +
+      difference
+  );
+
+  return formatISODate(
+    result
+  );
 }
 
 function getISOWeek(
   date: Date
 ) {
   const target =
-    new Date(
-      Date.UTC(
-        date.getUTCFullYear(),
-        date.getUTCMonth(),
-        date.getUTCDate()
-      )
-    );
+    new Date(date);
 
-  const dayNumber =
-    target.getUTCDay() || 7;
+  const day =
+    target.getUTCDay();
+
+  const diff =
+    day === 0
+      ? -3
+      : 4 - day;
 
   target.setUTCDate(
     target.getUTCDate() +
-      4 -
-      dayNumber
+      diff
   );
 
   const yearStart =
@@ -1134,18 +1151,17 @@ function getStatusIcon(
 const styles =
   StyleSheet.create({
     header: {
-      marginBottom: 22,
+      marginBottom: 18,
     },
 
     status: {
-      marginTop: 6,
+      marginTop: 5,
       fontSize: 14,
-      color: "#374151",
-      opacity: 1,
+      opacity: 0.7,
     },
 
     headerActions: {
-      marginTop: 14,
+      marginTop: 12,
     },
 
     previewButton: {
@@ -1153,16 +1169,14 @@ const styles =
       paddingHorizontal: 14,
       paddingVertical: 9,
       borderRadius: 9,
-      backgroundColor: "#FFFFFF",
-      borderWidth: 1,
-      borderColor: "#D1D5DB",
+      backgroundColor:
+        "rgba(255,255,255,0.06)",
     },
 
     previewButtonText: {
       fontSize: 13,
       fontWeight: "700",
-      color: "#374151",
-      opacity: 1,
+      opacity: 0.75,
     },
 
     weekNavigation: {
@@ -1170,7 +1184,7 @@ const styles =
       alignItems: "center",
       justifyContent:
         "space-between",
-      marginBottom: 20,
+      marginBottom: 16,
     },
 
     weekNavigationDesktop: {
@@ -1184,17 +1198,15 @@ const styles =
     },
 
     weekNumber: {
-      marginTop: 4,
-      fontSize: 19,
+      marginTop: 3,
+      fontSize: 17,
       fontWeight: "700",
-      color: "#111827",
     },
 
     weekDate: {
-      marginTop: 3,
-      fontSize: 13,
-      color: "#64748B",
-      opacity: 1,
+      marginTop: 2,
+      fontSize: 11,
+      opacity: 0.45,
     },
 
     navigationButton: {
@@ -1204,15 +1216,13 @@ const styles =
       alignItems: "center",
       justifyContent:
         "center",
-      backgroundColor: "#FFFFFF",
-      borderWidth: 1,
-      borderColor: "#D1D5DB",
+      backgroundColor:
+        "rgba(255,255,255,0.08)",
     },
 
     navigationText: {
       fontSize: 21,
       fontWeight: "600",
-      color: "#374151",
     },
 
     workspace: {
@@ -1223,7 +1233,7 @@ const styles =
       flexDirection: "row",
       alignItems:
         "flex-start",
-      gap: 20,
+      gap: 18,
       maxWidth: 1200,
       alignSelf: "center",
     },
@@ -1237,126 +1247,93 @@ const styles =
       minWidth: 0,
     },
 
-    calendar: {
-      backgroundColor: "#FFFFFF",
-      borderRadius: 16,
-      borderWidth: 1,
-      borderColor: "#E5E7EB",
-      overflow: "hidden",
-    },
-
     panelColumn: {
       width: 370,
       maxWidth: 370,
     },
 
     desktopDayRow: {
-      minHeight: 88,
+      minHeight: 66,
       flexDirection: "row",
       alignItems: "center",
       borderBottomWidth: 1,
-      borderBottomColor: "#E5E7EB",
-      paddingVertical: 12,
-      paddingHorizontal: 16,
-      backgroundColor: "#FFFFFF",
+      borderBottomColor:
+        "rgba(255,255,255,0.08)",
+      paddingVertical: 8,
+      paddingHorizontal: 10,
     },
 
     desktopDayInfo: {
-      width: 82,
+      width: 78,
     },
 
     desktopDayName: {
-      fontSize: 15,
+      fontSize: 14,
       fontWeight: "700",
-      color: "#111827",
     },
 
     desktopDate: {
-      marginTop: 3,
-      fontSize: 12,
-      color: "#64748B",
-      opacity: 1,
+      marginTop: 1,
+      fontSize: 11,
+      opacity: 0.45,
     },
 
     desktopSessions: {
       flex: 1,
       flexDirection: "row",
       alignItems: "center",
-      flexWrap: "wrap",
-      gap: 10,
+      gap: 8,
       minWidth: 0,
     },
 
     desktopSession: {
-      minWidth: 180,
-      maxWidth: 280,
-      paddingHorizontal: 14,
-      paddingVertical: 12,
-      borderRadius: 10,
-
-      backgroundColor: "#FFFFFF",
-
-      borderWidth: 1,
-      borderColor: "#D1D5DB",
-
-      shadowColor: "#000",
-      shadowOpacity: 0.04,
-      shadowRadius: 4,
-      shadowOffset: {
-        width: 0,
-        height: 2,
-      },
-
-      elevation: 1,
+      minWidth: 150,
+      maxWidth: 260,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      borderRadius: 8,
+      backgroundColor:
+        "rgba(255,255,255,0.055)",
     },
 
     desktopSlot: {
-      fontSize: 11,
-      fontWeight: "700",
-      color: "#64748B",
-      opacity: 1,
+      fontSize: 10,
+      fontWeight: "600",
+      opacity: 0.5,
     },
 
     desktopTitle: {
-      marginTop: 4,
-      fontSize: 14,
+      marginTop: 2,
+      fontSize: 13,
       fontWeight: "700",
-      color: "#111827",
     },
 
     desktopDescription: {
-      marginTop: 5,
-      fontSize: 12,
-      lineHeight: 17,
-      color: "#374151",
-      opacity: 1,
+      marginTop: 2,
+      fontSize: 11,
+      opacity: 0.45,
     },
 
     desktopEmpty: {
-      fontSize: 13,
-      color: "#94A3B8",
-      opacity: 1,
+      fontSize: 12,
+      opacity: 0.3,
     },
 
     desktopAddButton: {
-      width: 34,
-      height: 34,
-      borderRadius: 17,
+      width: 30,
+      height: 30,
+      borderRadius: 15,
       alignItems: "center",
       justifyContent:
         "center",
-      marginLeft: 10,
-      backgroundColor: "#F8FAFC",
-      borderWidth: 1,
-      borderColor: "#D1D5DB",
+      marginLeft: 8,
+      backgroundColor:
+        "rgba(255,255,255,0.06)",
     },
 
     desktopAddText: {
-      fontSize: 22,
-      lineHeight: 24,
-      fontWeight: "400",
-      color: "#374151",
-      opacity: 1,
+      fontSize: 19,
+      opacity: 0.55,
     },
 
     panelHeader: {
@@ -1372,60 +1349,54 @@ const styles =
     },
 
     panelTitle: {
-      marginTop: 5,
-      fontSize: 19,
+      marginTop: 3,
+      fontSize: 18,
       fontWeight: "700",
-      color: "#111827",
     },
 
     closeButton: {
-      width: 32,
-      height: 32,
-      borderRadius: 16,
+      width: 30,
+      height: 30,
+      borderRadius: 15,
       alignItems: "center",
       justifyContent:
         "center",
-      backgroundColor: "#F8FAFC",
-      borderWidth: 1,
-      borderColor: "#D1D5DB",
+      backgroundColor:
+        "rgba(255,255,255,0.08)",
     },
 
     closeButtonText: {
-      fontSize: 21,
-      lineHeight: 23,
-      color: "#374151",
-      opacity: 1,
+      fontSize: 20,
+      lineHeight: 22,
+      opacity: 0.7,
     },
 
     emptyPanel: {
-      paddingVertical: 16,
+      paddingVertical: 20,
     },
 
     emptyPanelTitle: {
-      marginTop: 7,
-      fontSize: 19,
+      marginTop: 5,
+      fontSize: 18,
       fontWeight: "700",
-      color: "#111827",
     },
 
     emptyPanelText: {
-      marginTop: 9,
-      lineHeight: 21,
+      marginTop: 6,
+      lineHeight: 19,
       fontSize: 14,
-      color: "#374151",
-      opacity: 1,
+      opacity: 0.55,
     },
 
     saving: {
       marginTop: 10,
       fontSize: 12,
-      color: "#64748B",
-      opacity: 1,
+      opacity: 0.5,
     },
 
     error: {
       marginBottom: 12,
-      color: "#B91C1C",
+      color: "#ff7b7b",
       fontSize: 13,
     },
 

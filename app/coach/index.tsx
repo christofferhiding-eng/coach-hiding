@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useState } from "react";
 import {
+  ActivityIndicator,
   Pressable,
   StyleSheet,
   View,
@@ -14,11 +15,41 @@ import SectionLabel from "@/components/ui/SectionLabel";
 
 import { athletes } from "@/features/athletes";
 import { supabase } from "@/lib/supabase";
+import { importEricTrainingPlan } from "@/features/training-plan/importEric";
 
 export default function CoachHomeScreen() {
+  const [importing, setImporting] = useState(false);
+  const [importMessage, setImportMessage] =
+    useState<string | null>(null);
+
   async function handleLogout() {
     await supabase.auth.signOut();
     router.replace("/login");
+  }
+
+  async function handleImportEric() {
+    setImportMessage(null);
+    setImporting(true);
+
+    try {
+      const sessions =
+        await importEricTrainingPlan();
+
+      setImportMessage(
+        `Klart! ${sessions?.length ?? 0} träningspass importerades för Eric.`
+      );
+    } catch (error) {
+      console.error(
+        "Importfel:",
+        error
+      );
+
+      setImportMessage(
+        "Importen misslyckades. Kontrollera konsolen."
+      );
+    } finally {
+      setImporting(false);
+    }
   }
 
   return (
@@ -105,6 +136,40 @@ export default function CoachHomeScreen() {
           </Card>
         </Pressable>
       ))}
+
+      <View style={styles.importSection}>
+        <SectionLabel>
+          TESTVERKTYG
+        </SectionLabel>
+
+        <Pressable
+          onPress={handleImportEric}
+          disabled={importing}
+          style={[
+            styles.importButton,
+            importing &&
+              styles.disabledButton,
+          ]}
+        >
+          {importing ? (
+            <ActivityIndicator />
+          ) : (
+            <BodyText
+              style={styles.importButtonText}
+            >
+              Importera Erics testschema
+            </BodyText>
+          )}
+        </Pressable>
+
+        {importMessage && (
+          <BodyText
+            style={styles.importMessage}
+          >
+            {importMessage}
+          </BodyText>
+        )}
+      </View>
     </Screen>
   );
 }
@@ -193,5 +258,37 @@ const styles = StyleSheet.create({
     marginTop: 16,
     fontSize: 15,
     fontWeight: "600",
+  },
+
+  importSection: {
+    marginTop: 30,
+    paddingBottom: 30,
+  },
+
+  importButton: {
+    marginTop: 10,
+    minHeight: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 16,
+    borderRadius: 9,
+    backgroundColor:
+      "rgba(80,200,140,0.9)",
+  },
+
+  disabledButton: {
+    opacity: 0.5,
+  },
+
+  importButtonText: {
+    fontSize: 14,
+    fontWeight: "800",
+  },
+
+  importMessage: {
+    marginTop: 10,
+    fontSize: 13,
+    lineHeight: 19,
+    opacity: 0.75,
   },
 });

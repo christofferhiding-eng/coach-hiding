@@ -1,5 +1,9 @@
 import React from "react";
-import { StyleSheet, Text, TextProps } from "react-native";
+import {
+  StyleSheet,
+  Text,
+  TextProps,
+} from "react-native";
 
 import { Colors } from "@/constants/design";
 
@@ -13,7 +17,10 @@ export default function SectionLabel({
   ...props
 }: SectionLabelProps) {
   return (
-    <Text style={[styles.label, style]} {...props}>
+    <Text
+      style={[styles.label, style]}
+      {...props}
+    >
       {children}
     </Text>
   );
@@ -21,10 +28,10 @@ export default function SectionLabel({
 
 const styles = StyleSheet.create({
   label: {
-    color: Colors.primaryLight,
+    color: Colors.primary,
     fontSize: 15,
-    fontWeight: "600",
+    fontWeight: "700",
     marginBottom: 10,
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
   },
 });

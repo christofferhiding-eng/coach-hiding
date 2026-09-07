@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+
 import {
   ActivityIndicator,
   Pressable,
@@ -6,6 +7,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+
 import { router } from "expo-router";
 
 import Screen from "@/components/ui/Screen";
@@ -13,14 +15,12 @@ import BodyText from "@/components/ui/BodyText";
 import Metric from "@/components/ui/Metric";
 import SectionLabel from "@/components/ui/SectionLabel";
 
+import { Colors, Radius, Spacing } from "@/constants/design";
 import { supabase } from "@/lib/supabase";
 
 export default function LoginScreen() {
-  const [email, setEmail] =
-    useState("");
-
-  const [password, setPassword] =
-    useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
 
   const [loading, setLoading] =
     useState(false);
@@ -45,21 +45,117 @@ export default function LoginScreen() {
     try {
       setLoading(true);
 
-      const { error } =
-        await supabase.auth.signInWithPassword(
-          {
-            email: email.trim(),
-            password,
-          }
-        );
+      /*
+       * 1. Logga in med Supabase Auth.
+       */
 
-      if (error) {
-        setError(error.message);
+      const {
+        data: authData,
+        error: loginError,
+      } =
+        await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        });
+
+      if (loginError) {
+        setError(loginError.message);
         return;
       }
 
-      router.replace("/");
+      const user = authData.user;
+
+      if (!user) {
+        setError(
+          "Kunde inte hitta den inloggade användaren."
+        );
+        return;
+      }
+
+      /*
+       * 2. Hämta profilen för den inloggade
+       * användaren.
+       */
+
+      const {
+        data: profile,
+        error: profileError,
+      } = await supabase
+        .from("profiles")
+        .select(
+          "id, name, role, athlete_id"
+        )
+        .eq("id", user.id)
+        .single();
+
+      if (profileError) {
+        console.error(
+          "Kunde inte läsa användarprofil:",
+          profileError
+        );
+
+        setError(
+          "Ditt konto kunde inte kopplas till en profil."
+        );
+
+        await supabase.auth.signOut();
+        return;
+      }
+
+      if (!profile) {
+        setError(
+          "Ingen användarprofil hittades."
+        );
+
+        await supabase.auth.signOut();
+        return;
+      }
+
+      /*
+       * 3. COACH
+       */
+
+      if (profile.role === "coach") {
+        router.replace("/coach");
+        return;
+      }
+
+      /*
+       * 4. ADEPT
+       */
+
+      if (profile.role === "athlete") {
+        if (!profile.athlete_id) {
+          setError(
+            "Ditt konto är inte kopplat till någon adept."
+          );
+
+          await supabase.auth.signOut();
+          return;
+        }
+
+        router.replace(
+          `/athlete/${profile.athlete_id}`
+        );
+
+        return;
+      }
+
+      /*
+       * 5. Okänd roll
+       */
+
+      setError(
+        "Ditt konto har ingen giltig användarroll."
+      );
+
+      await supabase.auth.signOut();
     } catch (error) {
+      console.error(
+        "Inloggningsfel:",
+        error
+      );
+
       setError(
         "Något gick fel vid inloggningen."
       );
@@ -104,13 +200,22 @@ export default function LoginScreen() {
 
       if (!data.session) {
         setMessage(
-          "Kontot är skapat. Kontrollera din e-post och bekräfta adressen innan du loggar in."
+          "Kontot är skapat. Kontrollera din e-post och bekräfta adressen."
         );
         return;
       }
 
-      router.replace("/");
+      setMessage(
+        "Kontot är skapat, men behöver kopplas till en användarprofil innan det kan användas."
+      );
+
+      await supabase.auth.signOut();
     } catch (error) {
+      console.error(
+        "Signup-fel:",
+        error
+      );
+
       setError(
         "Något gick fel när kontot skulle skapas."
       );
@@ -122,25 +227,20 @@ export default function LoginScreen() {
   return (
     <Screen>
       <View style={styles.container}>
-      <SectionLabel>
-  COACH HIDING
-</SectionLabel>
+        <SectionLabel>
+          COACH HIDING
+        </SectionLabel>
 
         <Metric>
           Logga in
         </Metric>
 
-        <BodyText
-          style={styles.intro}
-        >
-          Logga in för att se din
-          träningsplan.
+        <BodyText style={styles.intro}>
+          Logga in för att se din träningsplan.
         </BodyText>
 
         <View style={styles.form}>
-          <BodyText
-            style={styles.label}
-          >
+          <BodyText style={styles.label}>
             E-post
           </BodyText>
 
@@ -148,7 +248,7 @@ export default function LoginScreen() {
             value={email}
             onChangeText={setEmail}
             placeholder="din@email.se"
-            placeholderTextColor="rgba(255,255,255,0.35)"
+            placeholderTextColor="#8A8A8A"
             autoCapitalize="none"
             autoCorrect={false}
             keyboardType="email-address"
@@ -156,9 +256,7 @@ export default function LoginScreen() {
             style={styles.input}
           />
 
-          <BodyText
-            style={styles.label}
-          >
+          <BodyText style={styles.label}>
             Lösenord
           </BodyText>
 
@@ -166,7 +264,7 @@ export default function LoginScreen() {
             value={password}
             onChangeText={setPassword}
             placeholder="Lösenord"
-            placeholderTextColor="rgba(255,255,255,0.35)"
+            placeholderTextColor="#8A8A8A"
             secureTextEntry
             autoCapitalize="none"
             autoCorrect={false}
@@ -174,17 +272,13 @@ export default function LoginScreen() {
           />
 
           {error && (
-            <BodyText
-              style={styles.error}
-            >
+            <BodyText style={styles.error}>
               {error}
             </BodyText>
           )}
 
           {message && (
-            <BodyText
-              style={styles.message}
-            >
+            <BodyText style={styles.message}>
               {message}
             </BodyText>
           )}
@@ -193,18 +287,18 @@ export default function LoginScreen() {
             onPress={handleLogin}
             disabled={loading}
             style={[
-              styles.primaryButton,
+              styles.loginButton,
               loading &&
-                styles.disabledButton,
+                styles.buttonDisabled,
             ]}
           >
             {loading ? (
-              <ActivityIndicator />
+              <ActivityIndicator
+                color="#FFFFFF"
+              />
             ) : (
               <BodyText
-                style={
-                  styles.primaryText
-                }
+                style={styles.loginButtonText}
               >
                 Logga in
               </BodyText>
@@ -214,16 +308,12 @@ export default function LoginScreen() {
           <Pressable
             onPress={handleSignup}
             disabled={loading}
-            style={
-              styles.secondaryButton
-            }
+            style={styles.signupButton}
           >
             <BodyText
-              style={
-                styles.secondaryText
-              }
+              style={styles.signupButtonText}
             >
-              Skapa testkonto
+              Skapa konto
             </BodyText>
           </Pressable>
         </View>
@@ -235,88 +325,90 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     width: "100%",
-    maxWidth: 430,
+    maxWidth: 480,
     alignSelf: "center",
-    paddingTop: 30,
+    paddingTop: 40,
   },
 
   intro: {
-    marginTop: 8,
-    fontSize: 14,
-    lineHeight: 21,
-    opacity: 0.6,
+    marginTop: 10,
+    color: Colors.textSecondary,
+    lineHeight: 22,
   },
 
   form: {
-    marginTop: 28,
+    marginTop: 32,
   },
 
   label: {
-    marginBottom: 6,
-    fontSize: 12,
-    fontWeight: "700",
-    opacity: 0.65,
+    marginBottom: 8,
+    fontSize: 14,
+    fontWeight: "600",
+    color: Colors.text,
   },
 
   input: {
-    height: 48,
-    paddingHorizontal: 14,
-    marginBottom: 16,
-    borderRadius: 9,
+    width: "100%",
+    height: 52,
+    paddingHorizontal: 16,
+    marginBottom: 20,
+    borderRadius: Radius.card,
+    backgroundColor: "#FFFFFF",
     borderWidth: 1,
-    borderColor:
-      "rgba(255,255,255,0.12)",
-    backgroundColor:
-      "rgba(255,255,255,0.05)",
-    color: "#fff",
-    fontSize: 15,
+    borderColor: "#D5D5D5",
+
+    /*
+     * Viktigt:
+     * Gör texten som användaren skriver mörk.
+     */
+
+    color: "#111111",
+
+    fontSize: 16,
   },
 
   error: {
-    marginBottom: 12,
-    color: "#ff7b7b",
-    fontSize: 13,
-    lineHeight: 19,
+    marginBottom: 16,
+    color: "#C0392B",
+    fontSize: 14,
   },
 
   message: {
-    marginBottom: 12,
-    color: "#6ee7a5",
-    fontSize: 13,
-    lineHeight: 19,
-  },
-
-  primaryButton: {
-    height: 48,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 9,
-    backgroundColor:
-      "rgba(80,200,140,0.9)",
-  },
-
-  disabledButton: {
-    opacity: 0.5,
-  },
-
-  primaryText: {
+    marginBottom: 16,
+    color: Colors.primary,
     fontSize: 14,
-    fontWeight: "800",
+    lineHeight: 20,
   },
 
-  secondaryButton: {
-    height: 44,
+  loginButton: {
+    height: 52,
+    borderRadius: Radius.card,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 8,
-    borderRadius: 9,
-    backgroundColor:
-      "rgba(255,255,255,0.07)",
+    backgroundColor: Colors.primary,
+    marginTop: 4,
   },
 
-  secondaryText: {
-    fontSize: 13,
+  buttonDisabled: {
+    opacity: 0.6,
+  },
+
+  loginButtonText: {
+    color: "#FFFFFF",
+    fontSize: 16,
     fontWeight: "700",
-    opacity: 0.75,
+  },
+
+  signupButton: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 16,
+    marginTop: Spacing.sm,
+  },
+
+  signupButtonText: {
+    color: Colors.primary,
+    fontSize: 14,
+    fontWeight: "600",
   },
 });

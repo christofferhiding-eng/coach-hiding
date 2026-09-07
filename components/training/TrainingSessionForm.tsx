@@ -345,7 +345,10 @@ const styles = StyleSheet.create({
       "rgba(255,255,255,0.2)",
     borderRadius: 10,
     paddingHorizontal: 12,
-    color: "white",
+
+    // Ändrat från "white"
+    color: "#111111",
+
     fontSize: 16,
   },
 

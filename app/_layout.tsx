@@ -1,4 +1,8 @@
-import { Stack, usePathname, router } from "expo-router";
+import {
+  Stack,
+  usePathname,
+  router,
+} from "expo-router";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -84,19 +88,34 @@ export default function RootLayout() {
           return;
         }
 
+        /*
+         * COACH
+         *
+         * En coach ska använda coachvyn.
+         * Vi skickar bara till /coach om
+         * personen befinner sig på login,
+         * startsidan eller en adept-route.
+         */
         if (profile.role === "coach") {
           setProfileLoaded(true);
 
           if (
             pathname === "/login" ||
+            pathname === "/" ||
             pathname.startsWith("/athlete/")
           ) {
-            router.replace("/");
+            router.replace("/coach");
           }
 
           return;
         }
 
+        /*
+         * ADEPT
+         *
+         * En adept skickas till sin egen
+         * athlete-route.
+         */
         if (profile.role === "athlete") {
           if (!profile.athlete_id) {
             setProfileLoaded(true);
@@ -110,7 +129,8 @@ export default function RootLayout() {
 
           if (
             pathname === "/login" ||
-            pathname === "/"
+            pathname === "/" ||
+            pathname === "/coach"
           ) {
             router.replace(athletePath);
           }
@@ -158,6 +178,13 @@ export default function RootLayout() {
     <Stack>
       <Stack.Screen
         name="(tabs)"
+        options={{
+          headerShown: false,
+        }}
+      />
+
+      <Stack.Screen
+        name="coach/index"
         options={{
           headerShown: false,
         }}

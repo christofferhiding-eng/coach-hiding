@@ -1,1058 +1,1557 @@
 import React, {
-    useEffect,
-    useState,
-  } from "react";
-  import {
-    Pressable,
-    StyleSheet,
-    View,
-    useWindowDimensions,
-  } from "react-native";
-  import {
-    Stack,
-    useLocalSearchParams,
-  } from "expo-router";
-  
-  import Screen from "@/components/ui/Screen";
-  import Card from "@/components/ui/Card";
-  import BodyText from "@/components/ui/BodyText";
-  import Metric from "@/components/ui/Metric";
-  import SectionLabel from "@/components/ui/SectionLabel";
-  
-  import { getAthlete } from "@/features/athletes";
-  
-  import {
-    getStoredTrainingWeeks,
-  } from "@/features/training-plan";
-  
-  import {
-    TrainingSession,
-    TrainingWeek,
-  } from "@/features/training-plan";
-  
-  const TYPE_ICONS = {
-    easy: "🟢",
-    quality: "🔥",
-    long: "🏃",
-    rest: "⚪",
-  };
-  
-  const SLOT_LABELS = {
-    morning: "Förmiddag",
-    afternoon: "Eftermiddag",
-    evening: "Kväll",
-  };
-  
-  const SLOT_ICONS = {
-    morning: "☀️",
-    afternoon: "🌤️",
-    evening: "🌙",
-  };
-  
-  const WEEK_DAYS = [
-    { day: "Mån", offset: 0 },
-    { day: "Tis", offset: 1 },
-    { day: "Ons", offset: 2 },
-    { day: "Tor", offset: 3 },
-    { day: "Fre", offset: 4 },
-    { day: "Lör", offset: 5 },
-    { day: "Sön", offset: 6 },
-  ];
-  
-  export default function AthleteHomeScreen() {
-    const { id } =
-      useLocalSearchParams<{ id: string }>();
-  
-    const { width } =
-      useWindowDimensions();
-  
-    const isDesktop = width >= 900;
-  
-    const athlete = getAthlete(id);
-  
-    const [weeks, setWeeks] =
-      useState<TrainingWeek[]>([]);
-  
-    const [weekIndex, setWeekIndex] =
-      useState(0);
-  
-    const [selectedSessionId, setSelectedSessionId] =
-      useState<string | null>(null);
-  
-    useEffect(() => {
-      async function loadPlan() {
-        try {
-          const storedWeeks =
-            await getStoredTrainingWeeks();
-  
-          setWeeks(storedWeeks);
-        } catch (error) {
-          console.error(
-            "Kunde inte läsa träningsplanen:",
-            error
+  useEffect,
+  useState,
+} from "react";
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  TextInput,
+  View,
+  useWindowDimensions,
+} from "react-native";
+import {
+  Stack,
+  router,
+  useLocalSearchParams,
+} from "expo-router";
+
+import Screen from "@/components/ui/Screen";
+import Card from "@/components/ui/Card";
+import BodyText from "@/components/ui/BodyText";
+import Metric from "@/components/ui/Metric";
+import SectionLabel from "@/components/ui/SectionLabel";
+
+import { getAthlete } from "@/features/athletes";
+
+import {
+  getStoredTrainingWeeks,
+  TrainingSession,
+  TrainingWeek,
+} from "@/features/training-plan";
+
+import { supabase } from "@/lib/supabase";
+
+const TYPE_ICONS = {
+  easy: "🟢",
+  quality: "🔥",
+  long: "🏃",
+  rest: "⚪",
+};
+
+const SLOT_LABELS = {
+  morning: "Förmiddag",
+  afternoon: "Eftermiddag",
+  evening: "Kväll",
+};
+
+const SLOT_ICONS = {
+  morning: "☀️",
+  afternoon: "🌤️",
+  evening: "🌙",
+};
+
+const WEEK_DAYS = [
+  { day: "Mån", offset: 0 },
+  { day: "Tis", offset: 1 },
+  { day: "Ons", offset: 2 },
+  { day: "Tor", offset: 3 },
+  { day: "Fre", offset: 4 },
+  { day: "Lör", offset: 5 },
+  { day: "Sön", offset: 6 },
+];
+
+export default function AthleteHomeScreen() {
+  const { id } =
+    useLocalSearchParams<{ id: string }>();
+
+  const { width } =
+    useWindowDimensions();
+
+  const isDesktop = width >= 900;
+
+  const athlete = getAthlete(id);
+
+  const [weeks, setWeeks] =
+    useState<TrainingWeek[]>([]);
+
+  const [weekIndex, setWeekIndex] =
+    useState(0);
+
+  const [selectedSessionId, setSelectedSessionId] =
+    useState<string | null>(null);
+
+  const [comments, setComments] =
+    useState<Record<string, string>>({});
+
+  const [commentText, setCommentText] =
+    useState("");
+
+  const [savingComment, setSavingComment] =
+    useState(false);
+
+  const [commentMessage, setCommentMessage] =
+    useState<string | null>(null);
+
+  const [loggingOut, setLoggingOut] =
+    useState(false);
+
+  useEffect(() => {
+    async function loadPlan() {
+      try {
+        const storedWeeks =
+          await getStoredTrainingWeeks();
+
+        const weeksByStartDate =
+          new Map<string, TrainingWeek>();
+
+        for (const week of storedWeeks) {
+          const existingWeek =
+            weeksByStartDate.get(
+              week.startDate
+            );
+
+          if (!existingWeek) {
+            weeksByStartDate.set(
+              week.startDate,
+              {
+                ...week,
+                sessions: [
+                  ...week.sessions,
+                ],
+              }
+            );
+
+            continue;
+          }
+
+          const sessionIds =
+            new Set(
+              existingWeek.sessions.map(
+                (session) =>
+                  session.id
+              )
+            );
+
+          const newSessions =
+            week.sessions.filter(
+              (session) =>
+                !sessionIds.has(
+                  session.id
+                )
+            );
+
+          existingWeek.sessions.push(
+            ...newSessions
           );
         }
+
+        const sortedWeeks =
+          Array.from(
+            weeksByStartDate.values()
+          ).sort((a, b) =>
+            a.startDate.localeCompare(
+              b.startDate
+            )
+          );
+
+        setWeeks(sortedWeeks);
+
+        /*
+         * Ladda kommentarer.
+         */
+
+        const {
+          data: commentData,
+          error: commentError,
+        } = await supabase
+          .from("training_sessions")
+          .select(
+            "id, athlete_comment"
+          );
+
+        if (commentError) {
+          console.error(
+            "Kunde inte läsa kommentarer:",
+            commentError
+          );
+        } else {
+          const loadedComments:
+            Record<string, string> = {};
+
+          for (
+            const session of
+              commentData ?? []
+          ) {
+            if (
+              session.athlete_comment
+            ) {
+              loadedComments[
+                session.id
+              ] =
+                session.athlete_comment;
+            }
+          }
+
+          setComments(
+            loadedComments
+          );
+        }
+
+        if (!sortedWeeks.length) {
+          return;
+        }
+
+        const today =
+          formatISODate(new Date());
+
+        const currentWeekIndex =
+          sortedWeeks.findIndex(
+            (week) => {
+              const weekEnd =
+                addDays(
+                  week.startDate,
+                  6
+                );
+
+              return (
+                today >=
+                  week.startDate &&
+                today <= weekEnd
+              );
+            }
+          );
+
+        if (currentWeekIndex >= 0) {
+          setWeekIndex(
+            currentWeekIndex
+          );
+          return;
+        }
+
+        const nextWeekIndex =
+          sortedWeeks.findIndex(
+            (week) =>
+              week.startDate >
+              today
+          );
+
+        if (nextWeekIndex >= 0) {
+          setWeekIndex(
+            nextWeekIndex
+          );
+          return;
+        }
+
+        setWeekIndex(
+          sortedWeeks.length - 1
+        );
+      } catch (error) {
+        console.error(
+          "Kunde inte läsa träningsplanen:",
+          error
+        );
       }
-  
-      loadPlan();
-    }, []);
-  
-    if (!athlete) {
-      return (
-        <Screen>
-          <BodyText>
-            Adepten kunde inte hittas.
+    }
+
+    loadPlan();
+  }, [id]);
+
+  useEffect(() => {
+    if (!selectedSessionId) {
+      setCommentText("");
+      setCommentMessage(null);
+      return;
+    }
+
+    setCommentText(
+      comments[selectedSessionId] ?? ""
+    );
+
+    setCommentMessage(null);
+  }, [
+    selectedSessionId,
+    comments,
+  ]);
+
+  async function handleSaveComment() {
+    if (!selectedSessionId) {
+      return;
+    }
+
+    try {
+      setSavingComment(true);
+      setCommentMessage(null);
+
+      console.log(
+        "Försöker spara kommentar för pass:",
+        selectedSessionId
+      );
+
+      const {
+        data,
+        error,
+      } = await supabase
+        .from("training_sessions")
+        .update({
+          athlete_comment:
+            commentText.trim() || null,
+        })
+        .eq(
+          "id",
+          selectedSessionId
+        )
+        .select();
+
+      console.log(
+        "Resultat från sparning:",
+        {
+          data,
+          error,
+        }
+      );
+
+      if (error) {
+        console.error(
+          "Kunde inte spara kommentar:",
+          error
+        );
+
+        setCommentMessage(
+          `Kunde inte spara: ${error.message}`
+        );
+
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        console.error(
+          "Ingen rad uppdaterades."
+        );
+
+        setCommentMessage(
+          "Kommentaren kunde inte sparas. Ingen databasrad uppdaterades."
+        );
+
+        return;
+      }
+
+      setComments(
+        (current) => ({
+          ...current,
+          [selectedSessionId]:
+            commentText.trim(),
+        })
+      );
+
+      setCommentMessage(
+        "Kommentaren är sparad ✓"
+      );
+    } catch (error) {
+      console.error(
+        "Kunde inte spara kommentar:",
+        error
+      );
+
+      setCommentMessage(
+        "Något gick fel när kommentaren skulle sparas."
+      );
+    } finally {
+      setSavingComment(false);
+    }
+  }
+
+  async function handleLogout() {
+    try {
+      setLoggingOut(true);
+
+      const {
+        error,
+      } =
+        await supabase.auth.signOut();
+
+      if (error) {
+        console.error(
+          "Kunde inte logga ut:",
+          error
+        );
+
+        return;
+      }
+
+      router.replace("/login");
+    } catch (error) {
+      console.error(
+        "Utloggningsfel:",
+        error
+      );
+    } finally {
+      setLoggingOut(false);
+    }
+  }
+
+  if (!athlete) {
+    return (
+      <Screen>
+        <BodyText>
+          Adepten kunde inte hittas.
+        </BodyText>
+      </Screen>
+    );
+  }
+
+  if (!weeks.length) {
+    return (
+      <Screen>
+        <View
+          style={
+            styles.emptyState
+          }
+        >
+          <SectionLabel>
+            TRÄNING
+          </SectionLabel>
+
+          <Metric>
+            {athlete.name}
+          </Metric>
+
+          <BodyText
+            style={
+              styles.emptyText
+            }
+          >
+            Din träningsplan är inte
+            klar ännu.
           </BodyText>
-        </Screen>
-      );
-    }
-  
-    if (!weeks.length) {
-      return (
-        <Screen>
-          <View style={styles.emptyState}>
-            <SectionLabel>
-              TRÄNING
-            </SectionLabel>
-  
-            <Metric>
-              {athlete.name}
-            </Metric>
-  
+
+          <Pressable
+            onPress={handleLogout}
+            disabled={loggingOut}
+            style={
+              styles.logoutButton
+            }
+          >
             <BodyText
-              style={styles.emptyText}
+              style={
+                styles.logoutText
+              }
             >
-              Din träningsplan är inte
-              klar ännu.
+              {loggingOut
+                ? "Loggar ut..."
+                : "Logga ut"}
             </BodyText>
-          </View>
-        </Screen>
-      );
-    }
-  
-    const week = weeks[weekIndex];
-  
-    if (!week) {
-      return null;
-    }
-  
-    const days = createWeekDays(
+          </Pressable>
+        </View>
+      </Screen>
+    );
+  }
+
+  const week =
+    weeks[weekIndex];
+
+  if (!week) {
+    return null;
+  }
+
+  const days =
+    createWeekDays(
       week,
       athlete.id
     );
-  
-    const selectedSession =
-      findSession(
-        days,
-        selectedSessionId
-      );
-  
-    const canGoBack =
-      weekIndex > 0;
-  
-    const canGoForward =
-      weekIndex <
-      weeks.length - 1;
-  
-    const nextSession =
-      findNextSession(
-        weeks,
-        athlete.id
-      );
-  
-    return (
-      <>
-        <Stack.Screen
-          options={{
-            title: athlete.name,
-          }}
-        />
-  
-        <Screen>
+
+  const selectedSession =
+    findSession(
+      days,
+      selectedSessionId
+    );
+
+  const canGoBack =
+    weekIndex > 0;
+
+  const canGoForward =
+    weekIndex <
+    weeks.length - 1;
+
+  const nextSession =
+    findNextSession(
+      weeks,
+      athlete.id
+    );
+
+  return (
+    <>
+      <Stack.Screen
+        options={{
+          title: athlete.name,
+        }}
+      />
+
+      <Screen>
+        <View
+          style={[
+            styles.header,
+            isDesktop &&
+              styles.headerDesktop,
+          ]}
+        >
+          <View>
+            <SectionLabel>
+              MIN TRÄNING
+            </SectionLabel>
+
+            <Metric>
+              Hej {athlete.name} 👋
+            </Metric>
+          </View>
+
           <View
-            style={[
-              styles.header,
-              isDesktop &&
-                styles.headerDesktop,
-            ]}
+            style={
+              styles.headerRight
+            }
           >
-            <View>
-              <SectionLabel>
-                MIN TRÄNING
-              </SectionLabel>
-  
-              <Metric>
-                Hej {athlete.name} 👋
-              </Metric>
-            </View>
-  
             <BodyText
-              style={styles.status}
+              style={
+                styles.status
+              }
             >
               {getStatusIcon(
                 athlete.status
               )}{" "}
               {athlete.statusText}
             </BodyText>
-          </View>
-  
-          {nextSession && (
-            <Card>
-              <SectionLabel>
-                NÄSTA PASS
-              </SectionLabel>
-  
-              <BodyText
-                style={
-                  styles.nextDate
-                }
-              >
-                {formatLongDate(
-                  nextSession.date
-                )}
-              </BodyText>
-  
-              <BodyText
-                style={
-                  styles.nextTitle
-                }
-              >
-                {
-                  TYPE_ICONS[
-                    nextSession.type
-                  ]
-                }{" "}
-                {nextSession.title}
-              </BodyText>
-  
-              <BodyText
-                style={
-                  styles.nextDescription
-                }
-              >
-                {
-                  nextSession.description
-                }
-              </BodyText>
-            </Card>
-          )}
-  
-          <View
-            style={[
-              styles.weekNavigation,
-              isDesktop &&
-                styles.weekNavigationDesktop,
-            ]}
-          >
+
             <Pressable
-              onPress={() =>
-                canGoBack &&
-                setWeekIndex(
-                  (current) =>
-                    current - 1
-                )
+              onPress={handleLogout}
+              disabled={loggingOut}
+              style={
+                styles.logoutButton
               }
-              disabled={!canGoBack}
-              style={[
-                styles.navigationButton,
-                !canGoBack &&
-                  styles.navigationButtonDisabled,
-              ]}
             >
               <BodyText
                 style={
-                  styles.navigationText
+                  styles.logoutText
                 }
               >
-                ←
+                {loggingOut
+                  ? "Loggar ut..."
+                  : "Logga ut"}
               </BodyText>
             </Pressable>
-  
+          </View>
+        </View>
+
+        {nextSession && (
+          <Card>
+            <SectionLabel>
+              NÄSTA PASS
+            </SectionLabel>
+
+            <BodyText
+              style={
+                styles.nextDate
+              }
+            >
+              {formatLongDate(
+                nextSession.date
+              )}
+            </BodyText>
+
+            <BodyText
+              style={
+                styles.nextTitle
+              }
+            >
+              {
+                TYPE_ICONS[
+                  nextSession.type
+                ]
+              }{" "}
+              {nextSession.title}
+            </BodyText>
+
+            <BodyText
+              style={
+                styles.nextDescription
+              }
+            >
+              {
+                nextSession.description
+              }
+            </BodyText>
+          </Card>
+        )}
+
+        <View
+          style={[
+            styles.weekNavigation,
+            isDesktop &&
+              styles.weekNavigationDesktop,
+          ]}
+        >
+          <Pressable
+            onPress={() =>
+              canGoBack &&
+              setWeekIndex(
+                (current) =>
+                  current - 1
+              )
+            }
+            disabled={!canGoBack}
+            style={[
+              styles.navigationButton,
+              !canGoBack &&
+                styles.navigationButtonDisabled,
+            ]}
+          >
+            <BodyText
+              style={
+                styles.navigationText
+              }
+            >
+              ←
+            </BodyText>
+          </Pressable>
+
+          <View
+            style={
+              styles.weekTitle
+            }
+          >
+            <SectionLabel>
+              TRÄNINGSVECKA
+            </SectionLabel>
+
+            <BodyText
+              style={
+                styles.weekNumber
+              }
+            >
+              {week.title}
+            </BodyText>
+
+            <BodyText
+              style={
+                styles.weekDate
+              }
+            >
+              {formatWeekRange(
+                week.startDate
+              )}
+            </BodyText>
+          </View>
+
+          <Pressable
+            onPress={() =>
+              canGoForward &&
+              setWeekIndex(
+                (current) =>
+                  current + 1
+              )
+            }
+            disabled={!canGoForward}
+            style={[
+              styles.navigationButton,
+              !canGoForward &&
+                styles.navigationButtonDisabled,
+            ]}
+          >
+            <BodyText
+              style={
+                styles.navigationText
+              }
+            >
+              →
+            </BodyText>
+          </Pressable>
+        </View>
+
+        <View
+          style={[
+            styles.week,
+            isDesktop &&
+              styles.weekDesktop,
+          ]}
+        >
+          {days.map((day) => (
+            <DayCard
+              key={day.date}
+              day={day}
+              selectedSessionId={
+                selectedSessionId
+              }
+              onSelectSession={
+                setSelectedSessionId
+              }
+            />
+          ))}
+        </View>
+
+        {selectedSession && (
+          <Card>
             <View
-              style={styles.weekTitle}
-            >
-              <SectionLabel>
-                TRÄNINGSVECKA
-              </SectionLabel>
-  
-              <BodyText
-                style={styles.weekNumber}
-              >
-                {week.title}
-              </BodyText>
-  
-              <BodyText
-                style={styles.weekDate}
-              >
-                {formatWeekRange(
-                  week.startDate
-                )}
-              </BodyText>
-            </View>
-  
-            <Pressable
-              onPress={() =>
-                canGoForward &&
-                setWeekIndex(
-                  (current) =>
-                    current + 1
-                )
+              style={
+                styles.detailHeader
               }
-              disabled={!canGoForward}
-              style={[
-                styles.navigationButton,
-                !canGoForward &&
-                  styles.navigationButtonDisabled,
-              ]}
             >
-              <BodyText
-                style={
-                  styles.navigationText
-                }
-              >
-                →
-              </BodyText>
-            </Pressable>
-          </View>
-  
-          <View
-            style={[
-              styles.week,
-              isDesktop &&
-                styles.weekDesktop,
-            ]}
-          >
-            {days.map((day) => (
-              <DayCard
-                key={day.date}
-                day={day}
-                selectedSessionId={
-                  selectedSessionId
-                }
-                onSelectSession={
-                  setSelectedSessionId
-                }
-              />
-            ))}
-          </View>
-  
-          {selectedSession && (
-            <Card>
               <View
                 style={
-                  styles.detailHeader
+                  styles.detailHeaderText
                 }
+              >
+                <SectionLabel>
+                  PASSINSTRUKTION
+                </SectionLabel>
+
+                <BodyText
+                  style={
+                    styles.detailTitle
+                  }
+                >
+                  {
+                    TYPE_ICONS[
+                      selectedSession.type
+                    ]
+                  }{" "}
+                  {
+                    selectedSession.title
+                  }
+                </BodyText>
+              </View>
+
+              <Pressable
+                onPress={() =>
+                  setSelectedSessionId(
+                    null
+                  )
+                }
+                style={
+                  styles.closeButton
+                }
+              >
+                <BodyText
+                  style={
+                    styles.closeText
+                  }
+                >
+                  ×
+                </BodyText>
+              </Pressable>
+            </View>
+
+            <BodyText
+              style={
+                styles.detailSlot
+              }
+            >
+              {
+                SLOT_ICONS[
+                  selectedSession.slot
+                ]
+              }{" "}
+              {
+                SLOT_LABELS[
+                  selectedSession.slot
+                ]
+              }
+            </BodyText>
+
+            <BodyText
+              style={
+                styles.detailDescription
+              }
+            >
+              {
+                selectedSession.description
+              }
+            </BodyText>
+
+            <View
+              style={
+                styles.commentSection
+              }
+            >
+              <SectionLabel>
+                DIN KOMMENTAR
+              </SectionLabel>
+
+              <BodyText
+                style={
+                  styles.commentIntro
+                }
+              >
+                Hur kändes passet? Skriv
+                en kommentar till din coach.
+              </BodyText>
+
+              <TextInput
+                value={commentText}
+                onChangeText={
+                  setCommentText
+                }
+                placeholder="Skriv din kommentar här..."
+                placeholderTextColor="#666"
+                multiline
+                textAlignVertical="top"
+                style={
+                  styles.commentInput
+                }
+              />
+
+              <Pressable
+                onPress={
+                  handleSaveComment
+                }
+                disabled={
+                  savingComment
+                }
+                style={[
+                  styles.saveCommentButton,
+                  savingComment &&
+                    styles.saveCommentButtonDisabled,
+                ]}
+              >
+                {savingComment ? (
+                  <ActivityIndicator />
+                ) : (
+                  <BodyText
+                    style={
+                      styles.saveCommentText
+                    }
+                  >
+                    Spara kommentar
+                  </BodyText>
+                )}
+              </Pressable>
+
+              {commentMessage && (
+                <BodyText
+                  style={
+                    styles.commentMessage
+                  }
+                >
+                  {commentMessage}
+                </BodyText>
+              )}
+            </View>
+          </Card>
+        )}
+      </Screen>
+    </>
+  );
+}
+
+function DayCard({
+  day,
+  selectedSessionId,
+  onSelectSession,
+}: {
+  day: {
+    date: string;
+    day: string;
+    sessions: TrainingSession[];
+  };
+
+  selectedSessionId: string | null;
+
+  onSelectSession: (
+    sessionId: string | null
+  ) => void;
+}) {
+  const hasSessions =
+    day.sessions.length > 0;
+
+  return (
+    <View
+      style={
+        styles.dayCard
+      }
+    >
+      <View
+        style={
+          styles.dayHeader
+        }
+      >
+        <View>
+          <BodyText
+            style={
+              styles.dayName
+            }
+          >
+            {day.day}
+          </BodyText>
+
+          <BodyText
+            style={
+              styles.dayDate
+            }
+          >
+            {formatDate(
+              day.date
+            )}
+          </BodyText>
+        </View>
+
+        {hasSessions && (
+          <BodyText
+            style={
+              styles.sessionCount
+            }
+          >
+            {day.sessions.length}{" "}
+            pass
+          </BodyText>
+        )}
+      </View>
+
+      {!hasSessions ? (
+        <View
+          style={
+            styles.restDay
+          }
+        >
+          <BodyText
+            style={
+              styles.restText
+            }
+          >
+            Ingen planerad träning
+          </BodyText>
+        </View>
+      ) : (
+        day.sessions.map(
+          (session) => {
+            const selected =
+              selectedSessionId ===
+              session.id;
+
+            return (
+              <Pressable
+                key={session.id}
+                onPress={() =>
+                  onSelectSession(
+                    selected
+                      ? null
+                      : session.id
+                  )
+                }
+                style={[
+                  styles.session,
+                  selected &&
+                    styles.sessionSelected,
+                ]}
               >
                 <View
                   style={
-                    styles.detailHeaderText
+                    styles.sessionTop
                   }
                 >
-                  <SectionLabel>
-                    PASSINSTRUKTION
-                  </SectionLabel>
-  
                   <BodyText
                     style={
-                      styles.detailTitle
+                      styles.sessionSlot
+                    }
+                  >
+                    {
+                      SLOT_ICONS[
+                        session.slot
+                      ]
+                    }{" "}
+                    {
+                      SLOT_LABELS[
+                        session.slot
+                      ]
+                    }
+                  </BodyText>
+
+                  <BodyText
+                    style={
+                      styles.sessionType
                     }
                   >
                     {
                       TYPE_ICONS[
-                        selectedSession.type
+                        session.type
                       ]
-                    }{" "}
-                    {
-                      selectedSession.title
                     }
                   </BodyText>
                 </View>
-  
-                <Pressable
-                  onPress={() =>
-                    setSelectedSessionId(
-                      null
-                    )
-                  }
+
+                <BodyText
                   style={
-                    styles.closeButton
+                    styles.sessionTitle
                   }
                 >
-                  <BodyText
-                    style={
-                      styles.closeText
-                    }
-                  >
-                    ×
-                  </BodyText>
-                </Pressable>
-              </View>
-  
-              <BodyText
-                style={styles.detailSlot}
-              >
-                {
-                  SLOT_ICONS[
-                    selectedSession.slot
-                  ]
-                }{" "}
-                {
-                  SLOT_LABELS[
-                    selectedSession.slot
-                  ]
-                }
-              </BodyText>
-  
-              <BodyText
-                style={
-                  styles.detailDescription
-                }
-              >
-                {
-                  selectedSession.description
-                }
-              </BodyText>
-            </Card>
-          )}
-        </Screen>
-      </>
-    );
-  }
-  
-  function DayCard({
-    day,
-    selectedSessionId,
-    onSelectSession,
-  }: {
-    day: {
-      date: string;
-      day: string;
-      sessions: TrainingSession[];
-    };
-  
-    selectedSessionId: string | null;
-  
-    onSelectSession: (
-      sessionId: string | null
-    ) => void;
-  }) {
-    const hasSessions =
-      day.sessions.length > 0;
-  
-    return (
-      <View
-        style={styles.day}
-      >
-        <View
-          style={styles.dayHeader}
-        >
-          <View>
-            <BodyText
-              style={styles.dayName}
-            >
-              {day.day}
-            </BodyText>
-  
-            <BodyText
-              style={styles.dayDate}
-            >
-              {formatDate(day.date)}
-            </BodyText>
-          </View>
-  
-          {hasSessions && (
-            <BodyText
-              style={styles.sessionCount}
-            >
-              {day.sessions.length}{" "}
-              {day.sessions.length ===
-              1
-                ? "pass"
-                : "pass"}
-            </BodyText>
-          )}
-        </View>
-  
-        {!hasSessions ? (
-          <View
-            style={styles.restDay}
-          >
-            <BodyText
-              style={styles.restText}
-            >
-              Ingen planerad träning
-            </BodyText>
-          </View>
-        ) : (
-          day.sessions.map(
-            (session) => {
-              const selected =
-                selectedSessionId ===
-                session.id;
-  
-              return (
-                <Pressable
-                  key={session.id}
-                  onPress={() =>
-                    onSelectSession(
-                      selected
-                        ? null
-                        : session.id
-                    )
+                  {session.title}
+                </BodyText>
+
+                <BodyText
+                  style={
+                    styles.sessionDescription
                   }
-                  style={[
-                    styles.session,
-                    selected &&
-                      styles.sessionSelected,
-                  ]}
+                  numberOfLines={
+                    selected
+                      ? undefined
+                      : 2
+                  }
                 >
-                  <View
-                    style={
-                      styles.sessionTop
-                    }
-                  >
-                    <BodyText
-                      style={
-                        styles.sessionSlot
-                      }
-                    >
-                      {
-                        SLOT_ICONS[
-                          session.slot
-                        ]
-                      }{" "}
-                      {
-                        SLOT_LABELS[
-                          session.slot
-                        ]
-                      }
-                    </BodyText>
-  
-                    <BodyText
-                      style={
-                        styles.sessionType
-                      }
-                    >
-                      {
-                        TYPE_ICONS[
-                          session.type
-                        ]
-                      }
-                    </BodyText>
-                  </View>
-  
-                  <BodyText
-                    style={
-                      styles.sessionTitle
-                    }
-                  >
-                    {session.title}
-                  </BodyText>
-  
-                  <BodyText
-                    style={
-                      styles.sessionDescription
-                    }
-                    numberOfLines={
-                      selected
-                        ? undefined
-                        : 2
-                    }
-                  >
-                    {
-                      session.description
-                    }
-                  </BodyText>
-  
-                  <BodyText
-                    style={
-                      styles.readMore
-                    }
-                  >
-                    {selected
-                      ? "Dölj instruktion"
-                      : "Visa instruktion →"}
-                  </BodyText>
-                </Pressable>
-              );
-            }
-          )
-        )}
-      </View>
+                  {
+                    session.description
+                  }
+                </BodyText>
+
+                <BodyText
+                  style={
+                    styles.readMore
+                  }
+                >
+                  {selected
+                    ? "Dölj instruktion"
+                    : "Visa instruktion →"}
+                </BodyText>
+              </Pressable>
+            );
+          }
+        )
+      )}
+    </View>
+  );
+}
+
+function createWeekDays(
+  week: TrainingWeek,
+  athleteId: string
+) {
+  const athleteSessions =
+    week.sessions.filter(
+      (session) =>
+        session.athleteId ===
+        athleteId
     );
-  }
-  
-  function createWeekDays(
-    week: TrainingWeek,
-    athleteId: string
-  ) {
-    const athleteSessions =
-      week.sessions.filter(
-        (session) =>
-          session.athleteId ===
-          athleteId
-      );
-  
-    return WEEK_DAYS.map(
-      ({ day, offset }) => {
-        const date = addDays(
+
+  return WEEK_DAYS.map(
+    ({ day, offset }) => {
+      const date =
+        addDays(
           week.startDate,
           offset
         );
-  
-        const sessions =
-          athleteSessions
-            .filter(
-              (session) =>
-                session.date ===
-                date
-            )
-            .sort(
-              (a, b) =>
-                getSlotOrder(
-                  a.slot
-                ) -
-                getSlotOrder(
-                  b.slot
-                )
-            );
-  
-        return {
-          date,
-          day,
-          sessions,
-        };
-      }
-    );
-  }
-  
-  function findSession(
-    days: ReturnType<
-      typeof createWeekDays
-    >,
-    sessionId: string | null
-  ) {
-    if (!sessionId) {
-      return null;
+
+      const sessions =
+        athleteSessions
+          .filter(
+            (session) =>
+              session.date ===
+              date
+          )
+          .sort(
+            (a, b) =>
+              getSlotOrder(
+                a.slot
+              ) -
+              getSlotOrder(
+                b.slot
+              )
+          );
+
+      return {
+        date,
+        day,
+        sessions,
+      };
     }
-  
-    for (const day of days) {
-      const session =
-        day.sessions.find(
-          (item) =>
-            item.id === sessionId
-        );
-  
-      if (session) {
-        return session;
-      }
-    }
-  
+  );
+}
+
+function findSession(
+  days: ReturnType<
+    typeof createWeekDays
+  >,
+  sessionId: string | null
+) {
+  if (!sessionId) {
     return null;
   }
-  
-  function findNextSession(
-    weeks: TrainingWeek[],
-    athleteId: string
-  ) {
-    const sessions =
-      weeks
-        .flatMap(
-          (week) => week.sessions
-        )
-        .filter(
-          (session) =>
-            session.athleteId ===
-            athleteId
-        )
-        .sort((a, b) =>
-          a.date.localeCompare(
-            b.date
-          )
-        );
-  
-    const today =
-      formatISODate(new Date());
-  
-    return (
-      sessions.find(
+
+  for (const day of days) {
+    const session =
+      day.sessions.find(
+        (item) =>
+          item.id === sessionId
+      );
+
+    if (session) {
+      return session;
+    }
+  }
+
+  return null;
+}
+
+function findNextSession(
+  weeks: TrainingWeek[],
+  athleteId: string
+) {
+  const sessions =
+    weeks
+      .flatMap(
+        (week) =>
+          week.sessions
+      )
+      .filter(
         (session) =>
-          session.date >= today &&
+          session.athleteId ===
+            athleteId &&
           session.type !== "rest"
-      ) ?? null
+      )
+      .sort((a, b) =>
+        a.date.localeCompare(
+          b.date
+        )
+      );
+
+  const today =
+    formatISODate(
+      new Date()
     );
-  }
-  
-  function addDays(
-    date: string,
-    amount: number
-  ) {
-    const result =
-      new Date(date);
-  
-    result.setDate(
-      result.getDate() +
-        amount
+
+  return (
+    sessions.find(
+      (session) =>
+        session.date >= today
+    ) ?? null
+  );
+}
+
+function addDays(
+  date: string,
+  amount: number
+) {
+  const result =
+    new Date(
+      `${date}T12:00:00`
     );
-  
-    return formatISODate(
-      result
-    );
+
+  result.setDate(
+    result.getDate() +
+      amount
+  );
+
+  return formatISODate(
+    result
+  );
+}
+
+function formatISODate(
+  date: Date
+) {
+  const year =
+    date.getFullYear();
+
+  const month = String(
+    date.getMonth() + 1
+  ).padStart(2, "0");
+
+  const day = String(
+    date.getDate()
+  ).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function getSlotOrder(
+  slot:
+    | "morning"
+    | "afternoon"
+    | "evening"
+) {
+  if (slot === "morning") {
+    return 1;
   }
-  
-  function formatISODate(
-    date: Date
+
+  if (
+    slot === "afternoon"
   ) {
-    const year =
-      date.getFullYear();
-  
-    const month = String(
-      date.getMonth() + 1
-    ).padStart(2, "0");
-  
-    const day = String(
-      date.getDate()
-    ).padStart(2, "0");
-  
-    return `${year}-${month}-${day}`;
+    return 2;
   }
-  
-  function formatDate(
-    date: string
-  ) {
-    return new Date(
-      date
-    ).toLocaleDateString(
-      "sv-SE",
-      {
-        day: "numeric",
-        month: "short",
-      }
-    );
-  }
-  
-  function formatLongDate(
-    date: string
-  ) {
-    return new Date(
-      date
-    ).toLocaleDateString(
-      "sv-SE",
-      {
-        weekday: "long",
-        day: "numeric",
-        month: "long",
-      }
-    );
-  }
-  
-  function formatWeekRange(
-    startDate: string
-  ) {
-    const start =
-      new Date(startDate);
-  
-    const end =
-      new Date(startDate);
-  
-    end.setDate(
-      end.getDate() + 6
-    );
-  
-    return `${start.toLocaleDateString(
-      "sv-SE",
-      {
-        day: "numeric",
-        month: "short",
-      }
-    )}–${end.toLocaleDateString(
-      "sv-SE",
-      {
-        day: "numeric",
-        month: "short",
-      }
-    )}`;
-  }
-  
-  function getSlotOrder(
-    slot:
-      | "morning"
-      | "afternoon"
-      | "evening"
-  ) {
-    if (slot === "morning") {
-      return 1;
+
+  return 3;
+}
+
+function formatDate(
+  date: string
+) {
+  return new Date(
+    `${date}T12:00:00`
+  ).toLocaleDateString(
+    "sv-SE",
+    {
+      day: "numeric",
+      month: "short",
     }
-  
-    if (slot === "afternoon") {
-      return 2;
+  );
+}
+
+function formatLongDate(
+  date: string
+) {
+  return new Date(
+    `${date}T12:00:00`
+  ).toLocaleDateString(
+    "sv-SE",
+    {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
     }
-  
-    return 3;
+  );
+}
+
+function formatWeekRange(
+  startDate: string
+) {
+  const end =
+    addDays(
+      startDate,
+      6
+    );
+
+  return `${formatDate(
+    startDate
+  )}–${formatDate(end)}`;
+}
+
+function getStatusIcon(
+  status:
+    | "green"
+    | "yellow"
+    | "red"
+) {
+  if (status === "red") {
+    return "🔴";
   }
-  
-  function getStatusIcon(
-    status:
-      | "green"
-      | "yellow"
-      | "red"
-  ) {
-    if (status === "red") {
-      return "🔴";
-    }
-  
-    if (status === "yellow") {
-      return "🟡";
-    }
-  
-    return "🟢";
+
+  if (status === "yellow") {
+    return "🟡";
   }
-  
-  const styles = StyleSheet.create({
+
+  return "🟢";
+}
+
+const styles =
+  StyleSheet.create({
     header: {
-      marginBottom: 18,
+      marginBottom: 20,
     },
-  
+
     headerDesktop: {
-      maxWidth: 900,
-      width: "100%",
-      alignSelf: "center",
+      flexDirection: "row",
+      justifyContent:
+        "space-between",
+      alignItems: "flex-end",
     },
-  
+
+    headerRight: {
+      alignItems: "flex-end",
+    },
+
     status: {
-      marginTop: 5,
-      fontSize: 13,
-      opacity: 0.6,
+      marginTop: 8,
+      fontSize: 14,
+      opacity: 0.7,
     },
-  
+
+    logoutButton: {
+      marginTop: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 8,
+      backgroundColor:
+        "rgba(255,255,255,0.08)",
+    },
+
+    logoutText: {
+      fontSize: 12,
+      fontWeight: "600",
+      opacity: 0.7,
+    },
+
     nextDate: {
-      marginTop: 7,
-      fontSize: 13,
+      marginTop: 8,
+      fontSize: 14,
       opacity: 0.55,
     },
-  
+
     nextTitle: {
-      marginTop: 4,
-      fontSize: 21,
+      marginTop: 6,
+      fontSize: 20,
       fontWeight: "700",
     },
-  
+
     nextDescription: {
-      marginTop: 6,
-      fontSize: 14,
-      lineHeight: 20,
-      opacity: 0.65,
+      marginTop: 8,
+      fontSize: 15,
+      lineHeight: 22,
+      opacity: 0.7,
     },
-  
+
     weekNavigation: {
       flexDirection: "row",
       alignItems: "center",
       justifyContent:
         "space-between",
-      marginTop: 18,
-      marginBottom: 12,
+      marginTop: 8,
+      marginBottom: 18,
     },
-  
+
     weekNavigationDesktop: {
-      maxWidth: 900,
-      width: "100%",
+      maxWidth: 1100,
       alignSelf: "center",
+      width: "100%",
     },
-  
-    weekTitle: {
-      alignItems: "center",
-    },
-  
-    weekNumber: {
-      marginTop: 3,
-      fontSize: 17,
-      fontWeight: "700",
-    },
-  
-    weekDate: {
-      marginTop: 2,
-      fontSize: 11,
-      opacity: 0.45,
-    },
-  
+
     navigationButton: {
-      width: 38,
-      height: 38,
-      borderRadius: 19,
+      width: 42,
+      height: 42,
+      borderRadius: 21,
       alignItems: "center",
-      justifyContent:
-        "center",
+      justifyContent: "center",
       backgroundColor:
         "rgba(255,255,255,0.08)",
     },
-  
+
     navigationButtonDisabled: {
       opacity: 0.25,
     },
-  
+
     navigationText: {
-      fontSize: 20,
+      fontSize: 22,
       fontWeight: "600",
     },
-  
+
+    weekTitle: {
+      alignItems: "center",
+    },
+
+    weekNumber: {
+      marginTop: 4,
+      fontSize: 18,
+      fontWeight: "700",
+    },
+
+    weekDate: {
+      marginTop: 2,
+      fontSize: 12,
+      opacity: 0.5,
+    },
+
     week: {
-      width: "100%",
+      gap: 12,
     },
-  
+
     weekDesktop: {
-      maxWidth: 900,
-      alignSelf: "center",
+      flexDirection: "row",
+      flexWrap: "wrap",
     },
-  
-    day: {
-      marginBottom: 10,
+
+    dayCard: {
+      padding: 16,
+      borderRadius: 14,
+      backgroundColor:
+        "rgba(255,255,255,0.05)",
     },
-  
+
     dayHeader: {
       flexDirection: "row",
       alignItems: "center",
       justifyContent:
         "space-between",
-      paddingHorizontal: 4,
-      marginBottom: 5,
     },
-  
+
     dayName: {
-      fontSize: 15,
+      fontSize: 16,
       fontWeight: "700",
     },
-  
+
     dayDate: {
-      marginTop: 1,
-      fontSize: 11,
+      marginTop: 2,
+      fontSize: 13,
+      opacity: 0.5,
+    },
+
+    sessionCount: {
+      fontSize: 12,
       opacity: 0.45,
     },
-  
-    sessionCount: {
-      fontSize: 11,
+
+    restDay: {
+      marginTop: 14,
+      paddingTop: 14,
+      borderTopWidth: 1,
+      borderTopColor:
+        "rgba(255,255,255,0.08)",
+    },
+
+    restText: {
+      fontSize: 14,
       opacity: 0.4,
     },
-  
+
     session: {
-      padding: 13,
-      marginBottom: 7,
+      marginTop: 14,
+      padding: 14,
       borderRadius: 10,
       backgroundColor:
         "rgba(255,255,255,0.055)",
     },
-  
+
     sessionSelected: {
       backgroundColor:
-        "rgba(255,255,255,0.10)",
+        "rgba(142,227,176,0.12)",
     },
-  
+
     sessionTop: {
       flexDirection: "row",
-      alignItems: "center",
       justifyContent:
         "space-between",
+      alignItems: "center",
     },
-  
+
     sessionSlot: {
-      fontSize: 11,
+      fontSize: 12,
       fontWeight: "600",
-      opacity: 0.5,
+      opacity: 0.55,
     },
-  
+
     sessionType: {
-      fontSize: 13,
+      fontSize: 16,
     },
-  
+
     sessionTitle: {
-      marginTop: 4,
-      fontSize: 17,
+      marginTop: 6,
+      fontSize: 16,
       fontWeight: "700",
     },
-  
+
     sessionDescription: {
-      marginTop: 4,
-      fontSize: 13,
-      lineHeight: 19,
-      opacity: 0.62,
+      marginTop: 5,
+      fontSize: 14,
+      lineHeight: 20,
+      opacity: 0.65,
     },
-  
+
     readMore: {
-      marginTop: 7,
-      fontSize: 11,
-      fontWeight: "600",
-      opacity: 0.45,
-    },
-  
-    restDay: {
-      paddingVertical: 10,
-      paddingHorizontal: 13,
-      marginBottom: 8,
-      borderRadius: 9,
-      backgroundColor:
-        "rgba(255,255,255,0.025)",
-    },
-  
-    restText: {
+      marginTop: 8,
       fontSize: 12,
-      opacity: 0.35,
+      fontWeight: "600",
+      opacity: 0.55,
     },
-  
+
     detailHeader: {
       flexDirection: "row",
-      alignItems: "flex-start",
       justifyContent:
         "space-between",
+      alignItems: "flex-start",
     },
-  
+
     detailHeaderText: {
       flex: 1,
     },
-  
+
     detailTitle: {
-      marginTop: 3,
-      fontSize: 19,
+      marginTop: 5,
+      fontSize: 20,
       fontWeight: "700",
     },
-  
+
+    detailSlot: {
+      marginTop: 10,
+      fontSize: 14,
+      opacity: 0.6,
+    },
+
+    detailDescription: {
+      marginTop: 14,
+      fontSize: 15,
+      lineHeight: 23,
+      opacity: 0.8,
+    },
+
+    commentSection: {
+      marginTop: 28,
+      paddingTop: 22,
+      borderTopWidth: 1,
+      borderTopColor:
+        "rgba(255,255,255,0.1)",
+    },
+
+    commentIntro: {
+      marginTop: 7,
+      fontSize: 14,
+      lineHeight: 20,
+      opacity: 0.6,
+    },
+
+    commentInput: {
+      marginTop: 14,
+      minHeight: 120,
+      borderWidth: 1,
+      borderColor:
+        "rgba(255,255,255,0.2)",
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 12,
+      color: "#111",
+      fontSize: 15,
+    },
+
+    saveCommentButton: {
+      alignSelf: "flex-start",
+      marginTop: 12,
+      paddingHorizontal: 16,
+      paddingVertical: 11,
+      borderRadius: 9,
+      backgroundColor: "#8EE3B0",
+    },
+
+    saveCommentButtonDisabled: {
+      opacity: 0.6,
+    },
+
+    saveCommentText: {
+      color: "#111",
+      fontSize: 13,
+      fontWeight: "700",
+    },
+
+    commentMessage: {
+      marginTop: 10,
+      fontSize: 13,
+      opacity: 0.6,
+    },
+
     closeButton: {
-      width: 30,
-      height: 30,
-      borderRadius: 15,
+      width: 32,
+      height: 32,
+      borderRadius: 16,
       alignItems: "center",
-      justifyContent:
-        "center",
+      justifyContent: "center",
       backgroundColor:
         "rgba(255,255,255,0.08)",
     },
-  
+
     closeText: {
-      fontSize: 20,
-      lineHeight: 22,
-      opacity: 0.65,
+      fontSize: 22,
+      lineHeight: 24,
+      opacity: 0.7,
     },
-  
-    detailSlot: {
-      marginTop: 10,
-      fontSize: 12,
-      fontWeight: "600",
-      opacity: 0.5,
-    },
-  
-    detailDescription: {
-      marginTop: 8,
-      fontSize: 15,
-      lineHeight: 22,
-      opacity: 0.75,
-    },
-  
+
     emptyState: {
-      paddingVertical: 30,
-      alignItems: "center",
+      paddingVertical: 50,
     },
-  
+
     emptyText: {
-      marginTop: 12,
-      textAlign: "center",
-      opacity: 0.55,
+      marginTop: 10,
+      fontSize: 16,
+      opacity: 0.6,
     },
   });

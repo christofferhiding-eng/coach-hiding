@@ -1,11 +1,16 @@
 import React, { useEffect, useState } from "react";
 import {
   Button,
+  Pressable,
   StyleSheet,
   TextInput,
   View,
 } from "react-native";
-import { Stack, useLocalSearchParams } from "expo-router";
+import {
+  Stack,
+  router,
+  useLocalSearchParams,
+} from "expo-router";
 
 import Screen from "@/components/ui/Screen";
 import Card from "@/components/ui/Card";
@@ -15,33 +20,48 @@ import ProgressBar from "@/components/ui/ProgressBar";
 import SectionLabel from "@/components/ui/SectionLabel";
 
 import { getAthlete } from "@/features/athletes";
+
 import {
   getNote,
   saveNote as saveStoredNote,
 } from "@/features/notes";
 
 export default function AthleteProfileScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id } =
+    useLocalSearchParams<{ id: string }>();
 
   const athlete = getAthlete(id);
 
-  const [isWritingNote, setIsWritingNote] = useState(false);
-  const [note, setNote] = useState("");
-  const [savedNote, setSavedNote] = useState("");
-  const [isLoadingNote, setIsLoadingNote] = useState(true);
+  const [isWritingNote, setIsWritingNote] =
+    useState(false);
+
+  const [note, setNote] =
+    useState("");
+
+  const [savedNote, setSavedNote] =
+    useState("");
+
+  const [isLoadingNote, setIsLoadingNote] =
+    useState(true);
 
   useEffect(() => {
     async function loadNote() {
       if (!id) return;
 
       try {
-        const storedNote = await getNote(id);
+        const storedNote =
+          await getNote(id);
 
         if (storedNote) {
-          setSavedNote(storedNote.text);
+          setSavedNote(
+            storedNote.text
+          );
         }
       } catch (error) {
-        console.error("Kunde inte läsa coachnotering:", error);
+        console.error(
+          "Kunde inte läsa coachnotering:",
+          error
+        );
       } finally {
         setIsLoadingNote(false);
       }
@@ -60,31 +80,48 @@ export default function AthleteProfileScreen() {
         />
 
         <Screen>
-          <BodyText>Adepten kunde inte hittas.</BodyText>
+          <BodyText>
+            Adepten kunde inte hittas.
+          </BodyText>
         </Screen>
       </>
     );
   }
 
   const weeklyProgress = Math.min(
-    (athlete.weeklyDistance / athlete.weeklyGoal) * 100,
+    (athlete.weeklyDistance /
+      athlete.weeklyGoal) *
+      100,
     100
   );
 
   async function saveNote() {
-    const trimmedNote = note.trim();
+    const trimmedNote =
+      note.trim();
 
     if (!trimmedNote) return;
 
     try {
-      await saveStoredNote(athlete.id, trimmedNote);
+      await saveStoredNote(
+        athlete.id,
+        trimmedNote
+      );
 
       setSavedNote(trimmedNote);
       setNote("");
       setIsWritingNote(false);
     } catch (error) {
-      console.error("Kunde inte spara coachnotering:", error);
+      console.error(
+        "Kunde inte spara coachnotering:",
+        error
+      );
     }
+  }
+
+  function openTrainingPlan() {
+    router.push(
+      `/athletes/${athlete.id}/training`
+    );
   }
 
   return (
@@ -97,37 +134,108 @@ export default function AthleteProfileScreen() {
 
       <Screen>
         <View style={styles.header}>
-          <SectionLabel>ADEPT</SectionLabel>
+          <SectionLabel>
+            ADEPT
+          </SectionLabel>
 
-          <Metric>{athlete.name}</Metric>
+          <Metric>
+            {athlete.name}
+          </Metric>
 
-          <BodyText style={styles.status}>
-            {getStatusIcon(athlete.status)} {athlete.statusText}
+          <BodyText
+            style={styles.status}
+          >
+            {getStatusIcon(
+              athlete.status
+            )}{" "}
+            {athlete.statusText}
           </BodyText>
         </View>
 
+        <Pressable
+          onPress={openTrainingPlan}
+        >
+          <Card>
+            <View
+              style={
+                styles.trainingPlanRow
+              }
+            >
+              <View
+                style={
+                  styles.trainingPlanText
+                }
+              >
+                <SectionLabel>
+                  TRÄNINGSSCHEMA
+                </SectionLabel>
+
+                <BodyText
+                  style={
+                    styles.trainingPlanTitle
+                  }
+                >
+                  Se hela träningsplanen
+                </BodyText>
+
+                <BodyText
+                  style={
+                    styles.trainingPlanDescription
+                  }
+                >
+                  Vecka för vecka med
+                  alla planerade pass
+                  och instruktioner.
+                </BodyText>
+              </View>
+
+              <BodyText
+                style={
+                  styles.trainingPlanArrow
+                }
+              >
+                →
+              </BodyText>
+            </View>
+          </Card>
+        </Pressable>
+
         <Card>
-          <SectionLabel>DAGENS STATUS</SectionLabel>
+          <SectionLabel>
+            DAGENS STATUS
+          </SectionLabel>
 
-          <Metric>{athlete.score.toFixed(1)} / 10</Metric>
+          <Metric>
+            {athlete.score.toFixed(1)} / 10
+          </Metric>
 
-          <BodyText style={styles.message}>
+          <BodyText
+            style={styles.message}
+          >
             {athlete.message}
           </BodyText>
         </Card>
 
         <Card>
-          <SectionLabel>VECKANS TRÄNING</SectionLabel>
+          <SectionLabel>
+            VECKANS TRÄNING
+          </SectionLabel>
 
           <Metric>
-            {athlete.weeklyDistance} / {athlete.weeklyGoal} km
+            {athlete.weeklyDistance} /{" "}
+            {athlete.weeklyGoal} km
           </Metric>
 
-          <ProgressBar value={weeklyProgress} />
+          <ProgressBar
+            value={weeklyProgress}
+          />
 
-          <BodyText style={styles.info}>
+          <BodyText
+            style={styles.info}
+          >
             {Math.max(
-              athlete.weeklyGoal - athlete.weeklyDistance,
+              athlete.weeklyGoal -
+                athlete.weeklyDistance,
               0
             )}{" "}
             km kvar till veckans mål
@@ -135,40 +243,60 @@ export default function AthleteProfileScreen() {
         </Card>
 
         <Card>
-          <SectionLabel>SENASTE PASS</SectionLabel>
+          <SectionLabel>
+            SENASTE PASS
+          </SectionLabel>
 
-          <BodyText style={styles.detail}>
+          <BodyText
+            style={styles.detail}
+          >
             {athlete.lastRun}
           </BodyText>
         </Card>
 
         <Card>
-          <SectionLabel>NÄSTA NYCKELPASS</SectionLabel>
+          <SectionLabel>
+            NÄSTA NYCKELPASS
+          </SectionLabel>
 
-          <BodyText style={styles.detail}>
+          <BodyText
+            style={styles.detail}
+          >
             {athlete.nextKeySession}
           </BodyText>
         </Card>
 
         <Card>
-          <SectionLabel>DAGENS PASS</SectionLabel>
+          <SectionLabel>
+            DAGENS PASS
+          </SectionLabel>
 
-          <Metric>{athlete.training}</Metric>
+          <Metric>
+            {athlete.training}
+          </Metric>
         </Card>
 
         <Card>
-          <SectionLabel>COACHNOTERING</SectionLabel>
+          <SectionLabel>
+            COACHNOTERING
+          </SectionLabel>
 
           {isLoadingNote ? (
-            <BodyText style={styles.emptyNote}>
+            <BodyText
+              style={styles.emptyNote}
+            >
               Laddar notering...
             </BodyText>
           ) : savedNote ? (
-            <BodyText style={styles.note}>
+            <BodyText
+              style={styles.note}
+            >
               {savedNote}
             </BodyText>
           ) : (
-            <BodyText style={styles.emptyNote}>
+            <BodyText
+              style={styles.emptyNote}
+            >
               Ingen notering ännu.
             </BodyText>
           )}
@@ -184,12 +312,18 @@ export default function AthleteProfileScreen() {
                 style={styles.input}
               />
 
-              <View style={styles.buttonRow}>
+              <View
+                style={
+                  styles.buttonRow
+                }
+              >
                 <Button
                   title="Avbryt"
                   onPress={() => {
                     setNote("");
-                    setIsWritingNote(false);
+                    setIsWritingNote(
+                      false
+                    );
                   }}
                 />
 
@@ -200,18 +334,22 @@ export default function AthleteProfileScreen() {
               </View>
             </>
           ) : (
-            <View style={styles.button}>
-   <Button
-  title={
-    savedNote
-      ? "✏️ Redigera coachnotering"
-      : "✍️ Lägg till coachnotering"
-  }
-  onPress={() => {
-    setNote(savedNote);
-    setIsWritingNote(true);
-  }}
-/>
+            <View
+              style={styles.button}
+            >
+              <Button
+                title={
+                  savedNote
+                    ? "✏️ Redigera coachnotering"
+                    : "✍️ Lägg till coachnotering"
+                }
+                onPress={() => {
+                  setNote(savedNote);
+                  setIsWritingNote(
+                    true
+                  );
+                }}
+              />
             </View>
           )}
         </Card>
@@ -220,9 +358,20 @@ export default function AthleteProfileScreen() {
   );
 }
 
-function getStatusIcon(status: "green" | "yellow" | "red") {
-  if (status === "green") return "🟢";
-  if (status === "yellow") return "🟡";
+function getStatusIcon(
+  status:
+    | "green"
+    | "yellow"
+    | "red"
+) {
+  if (status === "green") {
+    return "🟢";
+  }
+
+  if (status === "yellow") {
+    return "🟡";
+  }
+
   return "🔴";
 }
 
@@ -235,6 +384,37 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginTop: 8,
     opacity: 0.8,
+  },
+
+  trainingPlanRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent:
+      "space-between",
+  },
+
+  trainingPlanText: {
+    flex: 1,
+  },
+
+  trainingPlanTitle: {
+    marginTop: 6,
+    fontSize: 19,
+    fontWeight: "700",
+  },
+
+  trainingPlanDescription: {
+    marginTop: 5,
+    fontSize: 14,
+    lineHeight: 20,
+    opacity: 0.65,
+  },
+
+  trainingPlanArrow: {
+    marginLeft: 16,
+    fontSize: 28,
+    fontWeight: "600",
+    opacity: 0.7,
   },
 
   message: {
@@ -268,7 +448,8 @@ const styles = StyleSheet.create({
     marginTop: 16,
     minHeight: 100,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.2)",
+    borderColor:
+      "rgba(255,255,255,0.2)",
     borderRadius: 12,
     padding: 12,
     color: "white",
@@ -281,7 +462,8 @@ const styles = StyleSheet.create({
 
   buttonRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
+    justifyContent:
+      "space-between",
     marginTop: 12,
   },
 });

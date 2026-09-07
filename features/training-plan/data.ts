@@ -1,6 +1,6 @@
 import { TrainingWeek } from "./types";
 
-export const trainingWeeks: TrainingWeek[] = [
+const annaTrainingWeeks: TrainingWeek[] = [
   {
     id: "anna-week-35",
     weekNumber: 35,
@@ -355,4 +355,57 @@ export const trainingWeeks: TrainingWeek[] = [
       },
     ],
   },
+];
+
+/*
+ * Separat testplan för Eric Lindh.
+ *
+ * Eric får samma fyra testveckor som Anna,
+ * men med egna IDs och athleteId = "eric".
+ *
+ * Detta är testdata. Den riktiga historiken
+ * kan senare importeras från Excel/Garmin.
+ */
+
+const ericTrainingWeeks: TrainingWeek[] =
+  annaTrainingWeeks.map((week) => ({
+    ...week,
+
+    id: week.id.replace(
+      /^anna-/,
+      "eric-"
+    ),
+
+    sessions: week.sessions.map(
+      (session) => ({
+        ...session,
+
+        id: session.id.replace(
+          /^anna-/,
+          "eric-"
+        ),
+
+        athleteId: "eric",
+      })
+    ),
+  }));
+
+/*
+ * Exportera båda testplanerna tillsammans.
+ *
+ * Anna:
+ * anna-week-35 ... anna-week-38
+ *
+ * Eric:
+ * eric-week-35 ... eric-week-38
+ */
+
+export {
+  annaTrainingWeeks,
+  ericTrainingWeeks,
+};
+
+export const trainingWeeks: TrainingWeek[] = [
+  ...annaTrainingWeeks,
+  ...ericTrainingWeeks,
 ];
