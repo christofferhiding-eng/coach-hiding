@@ -159,15 +159,11 @@ export default function CoachAthleteScreen() {
 
       setSessions(mapped);
 
-      if (mapped.length > 0) {
-        setWeekStart(
-          getMonday(
-            parseDate(
-              mapped[0].date
-            )
-          )
-        );
-      }
+      // Viktigt:
+      // Vi ändrar INTE weekStart här.
+      // Annars hoppar sidan alltid tillbaka
+      // till veckan för det första passet
+      // i databasen.
     } catch (error) {
       console.error(
         "Kunde inte läsa träningsplanen:",
@@ -306,6 +302,16 @@ export default function CoachAthleteScreen() {
           throw error;
         }
       }
+
+      // Om passet sparades i en annan vecka
+      // än den vi tittade på, visar vi den nya
+      // veckan. Annars stannar vi kvar på
+      // aktuell vecka.
+      setWeekStart(
+        getMonday(
+          parseDate(data.date)
+        )
+      );
 
       await loadSessions();
 
