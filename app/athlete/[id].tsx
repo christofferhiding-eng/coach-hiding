@@ -937,6 +937,9 @@ function DayCard({
                 }
                 style={[
                   styles.session,
+                  getSessionStyle(
+                    session.type
+                  ),
                   selected &&
                     styles.sessionSelected,
                 ]}
@@ -1015,6 +1018,28 @@ function DayCard({
       )}
     </View>
   );
+}
+
+function getSessionStyle(
+  type:
+    | "easy"
+    | "quality"
+    | "long"
+    | "rest"
+) {
+  if (type === "quality") {
+    return styles.sessionQuality;
+  }
+
+  if (type === "long") {
+    return styles.sessionLong;
+  }
+
+  if (type === "rest") {
+    return styles.sessionRest;
+  }
+
+  return styles.sessionEasy;
 }
 
 function createWeekDays(
@@ -1398,15 +1423,42 @@ const styles =
 
     session: {
       marginTop: 14,
-      padding: 14,
-      borderRadius: 10,
-      backgroundColor:
-        "rgba(255,255,255,0.055)",
+      padding: 15,
+      borderRadius: 12,
+      borderWidth: 1,
+      shadowColor: "#000",
+      shadowOpacity: 0.04,
+      shadowRadius: 4,
+      shadowOffset: {
+        width: 0,
+        height: 2,
+      },
+      elevation: 1,
+    },
+
+    sessionEasy: {
+      backgroundColor: "#EAF7EE",
+      borderColor: "#B9DFC5",
+    },
+
+    sessionQuality: {
+      backgroundColor: "#FFF5D9",
+      borderColor: "#E8D28C",
+    },
+
+    sessionLong: {
+      backgroundColor: "#EAF2FF",
+      borderColor: "#BDD1F0",
+    },
+
+    sessionRest: {
+      backgroundColor: "#F1F3F5",
+      borderColor: "#D5D9DE",
     },
 
     sessionSelected: {
-      backgroundColor:
-        "rgba(142,227,176,0.12)",
+      borderColor: "#111827",
+      borderWidth: 2,
     },
 
     sessionTop: {
@@ -1419,7 +1471,8 @@ const styles =
     sessionSlot: {
       fontSize: 12,
       fontWeight: "600",
-      opacity: 0.55,
+      color: "#4B5563",
+      opacity: 1,
     },
 
     sessionType: {
@@ -1430,20 +1483,23 @@ const styles =
       marginTop: 6,
       fontSize: 16,
       fontWeight: "700",
+      color: "#111827",
     },
 
     sessionDescription: {
       marginTop: 5,
       fontSize: 14,
       lineHeight: 20,
-      opacity: 0.65,
+      color: "#374151",
+      opacity: 1,
     },
 
     readMore: {
       marginTop: 8,
       fontSize: 12,
       fontWeight: "600",
-      opacity: 0.55,
+      color: "#374151",
+      opacity: 0.8,
     },
 
     detailHeader: {
