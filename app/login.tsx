@@ -16,47 +16,39 @@ import Metric from "@/components/ui/Metric";
 import SectionLabel from "@/components/ui/SectionLabel";
 
 import { Colors, Radius, Spacing } from "@/constants/design";
+
 import { supabase } from "@/lib/supabase";
 
 export default function LoginScreen() {
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  const [loading, setLoading] =
-    useState(false);
+  const [loading, setLoading] = useState(false);
+  const [isSignup, setIsSignup] = useState(false);
 
-  const [error, setError] =
-    useState<string | null>(null);
-
-  const [message, setMessage] =
-    useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
 
   async function handleLogin() {
     setError(null);
     setMessage(null);
 
     if (!email || !password) {
-      setError(
-        "Fyll i e-post och lösenord."
-      );
+      setError("Fyll i e-post och lösenord.");
       return;
     }
 
     try {
       setLoading(true);
 
-      /*
-       * 1. Logga in med Supabase Auth.
-       */
-
       const {
         data: authData,
         error: loginError,
-      } =
-        await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password,
-        });
+      } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
 
       if (loginError) {
         setError(loginError.message);
@@ -66,25 +58,16 @@ export default function LoginScreen() {
       const user = authData.user;
 
       if (!user) {
-        setError(
-          "Kunde inte hitta den inloggade användaren."
-        );
+        setError("Kunde inte hitta den inloggade användaren.");
         return;
       }
-
-      /*
-       * 2. Hämta profilen för den inloggade
-       * användaren.
-       */
 
       const {
         data: profile,
         error: profileError,
       } = await supabase
         .from("profiles")
-        .select(
-          "id, name, role, athlete_id"
-        )
+        .select("id, name, role, athlete_id")
         .eq("id", user.id)
         .single();
 
@@ -103,26 +86,15 @@ export default function LoginScreen() {
       }
 
       if (!profile) {
-        setError(
-          "Ingen användarprofil hittades."
-        );
-
+        setError("Ingen användarprofil hittades.");
         await supabase.auth.signOut();
         return;
       }
-
-      /*
-       * 3. COACH
-       */
 
       if (profile.role === "coach") {
         router.replace("/coach");
         return;
       }
-
-      /*
-       * 4. ADEPT
-       */
 
       if (profile.role === "athlete") {
         if (!profile.athlete_id) {
@@ -140,10 +112,6 @@ export default function LoginScreen() {
 
         return;
       }
-
-      /*
-       * 5. Okänd roll
-       */
 
       setError(
         "Ditt konto har ingen giltig användarroll."
@@ -168,9 +136,9 @@ export default function LoginScreen() {
     setError(null);
     setMessage(null);
 
-    if (!email || !password) {
+    if (!name.trim() || !email || !password) {
       setError(
-        "Fyll i e-post och lösenord."
+        "Fyll i namn, e-post och lösenord."
       );
       return;
     }
@@ -191,6 +159,11 @@ export default function LoginScreen() {
       } = await supabase.auth.signUp({
         email: email.trim(),
         password,
+        options: {
+          data: {
+            name: name.trim(),
+          },
+        },
       });
 
       if (error) {
@@ -200,16 +173,19 @@ export default function LoginScreen() {
 
       if (!data.session) {
         setMessage(
-          "Kontot är skapat. Kontrollera din e-post och bekräfta adressen."
+          "Kontot är skapat. Kontrollera din e-post och bekräfta adressen innan du loggar in."
         );
         return;
       }
 
       setMessage(
-        "Kontot är skapat, men behöver kopplas till en användarprofil innan det kan användas."
+        "Kontot är skapat. Du kan nu logga in."
       );
 
-      await supabase.auth.signOut();
+      setName("");
+      setEmail("");
+      setPassword("");
+      setIsSignup(false);
     } catch (error) {
       console.error(
         "Signup-fel:",
@@ -224,6 +200,12 @@ export default function LoginScreen() {
     }
   }
 
+  function handleSignupToggle() {
+    setError(null);
+    setMessage(null);
+    setIsSignup((current) => !current);
+  }
+
   return (
     <Screen>
       <View style={styles.container}>
@@ -232,14 +214,36 @@ export default function LoginScreen() {
         </SectionLabel>
 
         <Metric>
-          Logga in
+          {isSignup
+            ? "Skapa konto"
+            : "Logga in"}
         </Metric>
 
         <BodyText style={styles.intro}>
-          Logga in för att se din träningsplan.
+          {isSignup
+            ? "Skapa ditt konto för att komma igång med din träningsplan."
+            : "Logga in för att se din träningsplan."}
         </BodyText>
 
         <View style={styles.form}>
+          {isSignup && (
+            <>
+              <BodyText style={styles.label}>
+                Namn
+              </BodyText>
+
+              <TextInput
+                value={name}
+                onChangeText={setName}
+                placeholder="Ditt namn"
+                placeholderTextColor="#8A8A8A"
+                autoCapitalize="words"
+                autoCorrect={false}
+                style={styles.input}
+              />
+            </>
+          )}
+
           <BodyText style={styles.label}>
             E-post
           </BodyText>
@@ -284,7 +288,11 @@ export default function LoginScreen() {
           )}
 
           <Pressable
-            onPress={handleLogin}
+            onPress={
+              isSignup
+                ? handleSignup
+                : handleLogin
+            }
             disabled={loading}
             style={[
               styles.loginButton,
@@ -300,20 +308,24 @@ export default function LoginScreen() {
               <BodyText
                 style={styles.loginButtonText}
               >
-                Logga in
+                {isSignup
+                  ? "Skapa konto"
+                  : "Logga in"}
               </BodyText>
             )}
           </Pressable>
 
           <Pressable
-            onPress={handleSignup}
+            onPress={handleSignupToggle}
             disabled={loading}
             style={styles.signupButton}
           >
             <BodyText
               style={styles.signupButtonText}
             >
-              Skapa konto
+              {isSignup
+                ? "Jag har redan ett konto"
+                : "Skapa konto"}
             </BodyText>
           </Pressable>
         </View>
@@ -356,14 +368,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderWidth: 1,
     borderColor: "#D5D5D5",
-
-    /*
-     * Viktigt:
-     * Gör texten som användaren skriver mörk.
-     */
-
     color: "#111111",
-
     fontSize: 16,
   },
 
