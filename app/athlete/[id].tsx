@@ -2,6 +2,7 @@ import React, {
   useEffect,
   useState,
 } from "react";
+
 import {
   ActivityIndicator,
   Pressable,
@@ -10,6 +11,7 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
+
 import {
   Stack,
   router,
@@ -21,14 +23,6 @@ import Card from "@/components/ui/Card";
 import BodyText from "@/components/ui/BodyText";
 import Metric from "@/components/ui/Metric";
 import SectionLabel from "@/components/ui/SectionLabel";
-
-import { getAthlete } from "@/features/athletes";
-
-import {
-  getStoredTrainingWeeks,
-  TrainingSession,
-  TrainingWeek,
-} from "@/features/training-plan";
 
 import { supabase } from "@/lib/supabase";
 
@@ -61,6 +55,41 @@ const WEEK_DAYS = [
   { day: "Sön", offset: 6 },
 ];
 
+type SessionType =
+  | "easy"
+  | "quality"
+  | "long"
+  | "rest";
+
+type SessionSlot =
+  | "morning"
+  | "afternoon"
+  | "evening";
+
+type AthleteTrainingSession = {
+  id: string;
+  athleteId: string;
+  date: string;
+  day: string;
+  slot: SessionSlot;
+  title: string;
+  description: string;
+  type: SessionType;
+};
+
+type TrainingWeek = {
+  startDate: string;
+  title: string;
+  sessions: AthleteTrainingSession[];
+};
+
+type AthleteProfile = {
+  id: string;
+  name: string;
+  role: string;
+  athlete_id: string | null;
+};
+
 export default function AthleteHomeScreen() {
   const { id } =
     useLocalSearchParams<{ id: string }>();
@@ -70,7 +99,8 @@ export default function AthleteHomeScreen() {
 
   const isDesktop = width >= 900;
 
-  const athlete = getAthlete(id);
+  const [athlete, setAthlete] =
+    useState<AthleteProfile | null>(null);
 
   const [weeks, setWeeks] =
     useState<TrainingWeek[]>([]);
@@ -99,51 +129,129 @@ export default function AthleteHomeScreen() {
   useEffect(() => {
     async function loadPlan() {
       try {
-        const storedWeeks =
-          await getStoredTrainingWeeks();
+        if (!id) {
+          return;
+        }
+
+        /*
+         * 1. Hämta den inloggade adeptens profil.
+         */
+
+        const {
+          data: profile,
+          error: profileError,
+        } = await supabase
+          .from("profiles")
+          .select(
+            "id, name, role, athlete_id"
+          )
+          .eq(
+            "athlete_id",
+            id
+          )
+          .eq(
+            "role",
+            "athlete"
+          )
+          .single();
+
+        if (profileError) {
+          console.error(
+            "Kunde inte läsa adeptprofil:",
+            profileError
+          );
+
+          setAthlete(null);
+        } else {
+          setAthlete(profile);
+        }
+
+        /*
+         * 2. Hämta träningspassen direkt från Supabase.
+         *
+         * Detta är samma tabell som coachvyn använder.
+         */
+
+        const {
+          data: sessionData,
+          error: sessionError,
+        } = await supabase
+          .from("training_sessions")
+          .select(
+            "id, athlete_id, date, day, slot, title, description, type"
+          )
+          .eq(
+            "athlete_id",
+            id
+          )
+          .order(
+            "date",
+            {
+              ascending: true,
+            }
+          );
+
+        if (sessionError) {
+          console.error(
+            "Kunde inte läsa träningspassen:",
+            sessionError
+          );
+
+          setWeeks([]);
+          return;
+        }
+
+        const mappedSessions: AthleteTrainingSession[] =
+          (sessionData ?? []).map(
+            (session) => ({
+              id: session.id,
+              athleteId:
+                session.athlete_id,
+              date: session.date,
+              day: session.day,
+              slot: session.slot,
+              title: session.title,
+              description:
+                session.description,
+              type: session.type,
+            })
+          );
+
+        /*
+         * 3. Gruppera passen per träningsvecka.
+         */
 
         const weeksByStartDate =
-          new Map<string, TrainingWeek>();
+          new Map<
+            string,
+            TrainingWeek
+          >();
 
-        for (const week of storedWeeks) {
+        for (const session of mappedSessions) {
+          const startDate =
+            getMonday(session.date);
+
           const existingWeek =
             weeksByStartDate.get(
-              week.startDate
+              startDate
             );
 
-          if (!existingWeek) {
+          if (existingWeek) {
+            existingWeek.sessions.push(
+              session
+            );
+          } else {
             weeksByStartDate.set(
-              week.startDate,
+              startDate,
               {
-                ...week,
-                sessions: [
-                  ...week.sessions,
-                ],
+                startDate,
+                title: `Vecka ${getWeekNumber(
+                  startDate
+                )}`,
+                sessions: [session],
               }
             );
-
-            continue;
           }
-
-          const sessionIds =
-            new Set(
-              existingWeek.sessions.map(
-                (session) =>
-                  session.id
-              )
-            );
-
-          const newSessions =
-            week.sessions.filter(
-              (session) =>
-                !sessionIds.has(
-                  session.id
-                )
-            );
-
-          existingWeek.sessions.push(
-            ...newSessions
-          );
         }
 
         const sortedWeeks =
@@ -155,10 +263,30 @@ export default function AthleteHomeScreen() {
             )
           );
 
+        for (const week of sortedWeeks) {
+          week.sessions.sort(
+            (a, b) => {
+              const dateCompare =
+                a.date.localeCompare(
+                  b.date
+                );
+
+              if (dateCompare !== 0) {
+                return dateCompare;
+              }
+
+              return (
+                getSlotOrder(a.slot) -
+                getSlotOrder(b.slot)
+              );
+            }
+          );
+        }
+
         setWeeks(sortedWeeks);
 
         /*
-         * Ladda kommentarer.
+         * 4. Ladda kommentarer.
          */
 
         const {
@@ -168,6 +296,10 @@ export default function AthleteHomeScreen() {
           .from("training_sessions")
           .select(
             "id, athlete_comment"
+          )
+          .eq(
+            "athlete_id",
+            id
           );
 
         if (commentError) {
@@ -197,6 +329,10 @@ export default function AthleteHomeScreen() {
             loadedComments
           );
         }
+
+        /*
+         * 5. Välj aktuell vecka.
+         */
 
         if (!sortedWeeks.length) {
           return;
@@ -283,11 +419,6 @@ export default function AthleteHomeScreen() {
       setSavingComment(true);
       setCommentMessage(null);
 
-      console.log(
-        "Försöker spara kommentar för pass:",
-        selectedSessionId
-      );
-
       const {
         data,
         error,
@@ -303,14 +434,6 @@ export default function AthleteHomeScreen() {
         )
         .select();
 
-      console.log(
-        "Resultat från sparning:",
-        {
-          data,
-          error,
-        }
-      );
-
       if (error) {
         console.error(
           "Kunde inte spara kommentar:",
@@ -325,10 +448,6 @@ export default function AthleteHomeScreen() {
       }
 
       if (!data || data.length === 0) {
-        console.error(
-          "Ingen rad uppdaterades."
-        );
-
         setCommentMessage(
           "Kommentaren kunde inte sparas. Ingen databasrad uppdaterades."
         );
@@ -457,7 +576,7 @@ export default function AthleteHomeScreen() {
   const days =
     createWeekDays(
       week,
-      athlete.id
+      id
     );
 
   const selectedSession =
@@ -476,7 +595,7 @@ export default function AthleteHomeScreen() {
   const nextSession =
     findNextSession(
       weeks,
-      athlete.id
+      id
     );
 
   return (
@@ -510,17 +629,6 @@ export default function AthleteHomeScreen() {
               styles.headerRight
             }
           >
-            <BodyText
-              style={
-                styles.status
-              }
-            >
-              {getStatusIcon(
-                athlete.status
-              )}{" "}
-              {athlete.statusText}
-            </BodyText>
-
             <Pressable
               onPress={handleLogout}
               disabled={loggingOut}
@@ -849,7 +957,7 @@ function DayCard({
   day: {
     date: string;
     day: string;
-    sessions: TrainingSession[];
+    sessions: AthleteTrainingSession[];
   };
 
   selectedSessionId: string | null;
@@ -1021,11 +1129,7 @@ function DayCard({
 }
 
 function getSessionStyle(
-  type:
-    | "easy"
-    | "quality"
-    | "long"
-    | "rest"
+  type: SessionType
 ) {
   if (type === "quality") {
     return styles.sessionQuality;
@@ -1166,6 +1270,76 @@ function addDays(
   );
 }
 
+function getMonday(
+  date: string
+) {
+  const result =
+    new Date(
+      `${date}T12:00:00`
+    );
+
+  const day =
+    result.getDay();
+
+  const difference =
+    day === 0
+      ? -6
+      : 1 - day;
+
+  result.setDate(
+    result.getDate() +
+      difference
+  );
+
+  return formatISODate(
+    result
+  );
+}
+
+function getWeekNumber(
+  date: string
+) {
+  const current =
+    new Date(
+      `${date}T12:00:00`
+    );
+
+  const target =
+    new Date(
+      Date.UTC(
+        current.getFullYear(),
+        current.getMonth(),
+        current.getDate()
+      )
+    );
+
+  const dayNumber =
+    target.getUTCDay() || 7;
+
+  target.setUTCDate(
+    target.getUTCDate() +
+      4 -
+      dayNumber
+  );
+
+  const yearStart =
+    new Date(
+      Date.UTC(
+        target.getUTCFullYear(),
+        0,
+        1
+      )
+    );
+
+  return Math.ceil(
+    (((target.getTime() -
+      yearStart.getTime()) /
+      86400000) +
+      1) /
+      7
+  );
+}
+
 function formatISODate(
   date: Date
 ) {
@@ -1184,10 +1358,7 @@ function formatISODate(
 }
 
 function getSlotOrder(
-  slot:
-    | "morning"
-    | "afternoon"
-    | "evening"
+  slot: SessionSlot
 ) {
   if (slot === "morning") {
     return 1;
@@ -1243,23 +1414,6 @@ function formatWeekRange(
   return `${formatDate(
     startDate
   )}–${formatDate(end)}`;
-}
-
-function getStatusIcon(
-  status:
-    | "green"
-    | "yellow"
-    | "red"
-) {
-  if (status === "red") {
-    return "🔴";
-  }
-
-  if (status === "yellow") {
-    return "🟡";
-  }
-
-  return "🟢";
 }
 
 const styles =
