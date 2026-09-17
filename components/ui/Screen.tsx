@@ -1,4 +1,6 @@
-import React from "react";
+import React, {
+  forwardRef,
+} from "react";
 
 import {
   ScrollView,
@@ -17,33 +19,45 @@ type ScreenProps = ScrollViewProps & {
   children: React.ReactNode;
 };
 
-export default function Screen({
-  children,
-  contentContainerStyle,
-  ...props
-}: ScreenProps) {
-  return (
-    <SafeAreaView
-      style={styles.safeArea}
-    >
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={[
-          styles.content,
-          contentContainerStyle,
-        ]}
-        {...props}
+const Screen = forwardRef<
+  ScrollView,
+  ScreenProps
+>(
+  function Screen(
+    {
+      children,
+      contentContainerStyle,
+      ...props
+    },
+    ref
+  ) {
+    return (
+      <SafeAreaView
+        style={styles.safeArea}
       >
-        {children}
-      </ScrollView>
-    </SafeAreaView>
-  );
-}
+        <ScrollView
+          ref={ref}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[
+            styles.content,
+            contentContainerStyle,
+          ]}
+          {...props}
+        >
+          {children}
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+);
+
+export default Screen;
 
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor:
+      Colors.background,
   },
 
   content: {

@@ -1,11 +1,13 @@
 import React, {
   useEffect,
+  useRef,
   useState,
 } from "react";
 
 import {
   ActivityIndicator,
   Pressable,
+  ScrollView,
   StyleSheet,
   TextInput,
   View,
@@ -98,6 +100,9 @@ export default function AthleteHomeScreen() {
     useWindowDimensions();
 
   const isDesktop = width >= 900;
+
+  const screenRef = useRef<ScrollView>(null);
+  const detailY = useRef(0);
 
   const [athlete, setAthlete] =
     useState<AthleteProfile | null>(null);
@@ -405,6 +410,15 @@ export default function AthleteHomeScreen() {
     );
 
     setCommentMessage(null);
+
+    const timeout = setTimeout(() => {
+      screenRef.current?.scrollTo({
+        y: Math.max(detailY.current - 20, 0),
+        animated: true,
+      });
+    }, 80);
+
+    return () => clearTimeout(timeout);
   }, [
     selectedSessionId,
     comments,
@@ -598,6 +612,56 @@ export default function AthleteHomeScreen() {
       id
     );
 
+  const currentWeekSessions =
+    week.sessions.filter(
+      (session) =>
+        session.athleteId === id &&
+        session.type !== "rest"
+    );
+
+  const qualityCount =
+    currentWeekSessions.filter(
+      (session) => session.type === "quality"
+    ).length;
+
+  const longCount =
+    currentWeekSessions.filter(
+      (session) => session.type === "long"
+    ).length;
+
+  const upcomingSessions =
+    weeks
+      .flatMap((item) => item.sessions)
+      .filter(
+        (session) =>
+          session.athleteId === id &&
+          session.type !== "rest" &&
+          session.date >= formatISODate(new Date())
+      )
+      .sort((a, b) => {
+        const dateCompare =
+          a.date.localeCompare(b.date);
+
+        if (dateCompare !== 0) {
+          return dateCompare;
+        }
+
+        return (
+          getSlotOrder(a.slot) -
+          getSlotOrder(b.slot)
+        );
+      });
+
+  const nextUpcomingSessions =
+    nextSession
+      ? upcomingSessions
+          .filter(
+            (session) =>
+              session.id !== nextSession.id
+          )
+          .slice(0, 3)
+      : upcomingSessions.slice(0, 3);
+
   return (
     <>
       <Stack.Screen
@@ -606,7 +670,7 @@ export default function AthleteHomeScreen() {
         }}
       />
 
-      <Screen>
+      <Screen ref={screenRef}>
         <View
           style={[
             styles.header,
@@ -649,6 +713,35 @@ export default function AthleteHomeScreen() {
           </View>
         </View>
 
+        <View style={styles.dashboardStats}>
+          <View style={styles.dashboardStatCard}>
+            <BodyText style={styles.dashboardStatValue}>
+              {currentWeekSessions.length}
+            </BodyText>
+            <BodyText style={styles.dashboardStatLabel}>
+              Planerade pass
+            </BodyText>
+          </View>
+
+          <View style={styles.dashboardStatCard}>
+            <BodyText style={styles.dashboardStatValue}>
+              {qualityCount}
+            </BodyText>
+            <BodyText style={styles.dashboardStatLabel}>
+              Kvalitetspass
+            </BodyText>
+          </View>
+
+          <View style={styles.dashboardStatCard}>
+            <BodyText style={styles.dashboardStatValue}>
+              {longCount}
+            </BodyText>
+            <BodyText style={styles.dashboardStatLabel}>
+              Långpass
+            </BodyText>
+          </View>
+        </View>
+
         {nextSession && (
           <Card>
             <SectionLabel>
@@ -687,6 +780,42 @@ export default function AthleteHomeScreen() {
                 nextSession.description
               }
             </BodyText>
+          </Card>
+        )}
+
+        {nextUpcomingSessions.length > 0 && (
+          <Card>
+            <SectionLabel>
+              KOMMANDE PASS
+            </SectionLabel>
+
+            <View style={styles.upcomingList}>
+              {nextUpcomingSessions.map((session) => (
+                <Pressable
+                  key={session.id}
+                  onPress={() =>
+                    setSelectedSessionId(session.id)
+                  }
+                  style={[
+                    styles.upcomingSession,
+                    getSessionStyle(session.type),
+                  ]}
+                >
+                  <View style={styles.upcomingSessionMain}>
+                    <BodyText style={styles.upcomingDate}>
+                      {formatLongDate(session.date)}
+                    </BodyText>
+                    <BodyText style={styles.upcomingTitle}>
+                      {TYPE_ICONS[session.type]} {session.title}
+                    </BodyText>
+                  </View>
+
+                  <BodyText style={styles.upcomingArrow}>
+                    →
+                  </BodyText>
+                </Pressable>
+              ))}
+            </View>
           </Card>
         )}
 
@@ -796,7 +925,13 @@ export default function AthleteHomeScreen() {
         </View>
 
         {selectedSession && (
-          <Card>
+          <View
+            onLayout={(event) => {
+              detailY.current =
+                event.nativeEvent.layout.y;
+            }}
+          >
+            <Card>
             <View
               style={
                 styles.detailHeader
@@ -942,7 +1077,8 @@ export default function AthleteHomeScreen() {
                 </BodyText>
               )}
             </View>
-          </Card>
+            </Card>
+          </View>
         )}
       </Screen>
     </>
@@ -1471,6 +1607,70 @@ const styles =
       fontSize: 15,
       lineHeight: 22,
       opacity: 0.7,
+    },
+
+    dashboardStats: {
+      flexDirection: "row",
+      gap: 10,
+      marginBottom: 16,
+    },
+
+    dashboardStatCard: {
+      flex: 1,
+      minHeight: 82,
+      paddingHorizontal: 14,
+      paddingVertical: 13,
+      borderRadius: 12,
+      backgroundColor: "rgba(255,255,255,0.05)",
+      justifyContent: "center",
+    },
+
+    dashboardStatValue: {
+      fontSize: 24,
+      fontWeight: "700",
+    },
+
+    dashboardStatLabel: {
+      marginTop: 3,
+      fontSize: 12,
+      opacity: 0.5,
+    },
+
+    upcomingList: {
+      gap: 10,
+      marginTop: 14,
+    },
+
+    upcomingSession: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      padding: 13,
+      borderRadius: 10,
+      borderWidth: 1,
+    },
+
+    upcomingSessionMain: {
+      flex: 1,
+      paddingRight: 12,
+    },
+
+    upcomingDate: {
+      fontSize: 12,
+      color: "#4B5563",
+      opacity: 1,
+    },
+
+    upcomingTitle: {
+      marginTop: 3,
+      fontSize: 15,
+      fontWeight: "700",
+      color: "#111827",
+    },
+
+    upcomingArrow: {
+      fontSize: 18,
+      color: "#374151",
     },
 
     weekNavigation: {
