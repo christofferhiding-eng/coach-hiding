@@ -24,7 +24,6 @@ import SectionLabel from "@/components/ui/SectionLabel";
 
 import TrainingSessionForm from "@/components/training/TrainingSessionForm";
 
-import { getAthlete } from "@/features/athletes";
 import { supabase } from "@/lib/supabase";
 
 import type {
@@ -62,6 +61,13 @@ const WEEK_DAYS = [
   { day: "Sön", offset: 6 },
 ];
 
+type CoachAthlete = {
+  id: string;
+  name: string;
+  status: "green" | "yellow" | "red";
+  statusText: string;
+};
+
 type SupabaseSession = {
   id: string;
   athlete_id: string;
@@ -84,7 +90,8 @@ export default function CoachAthleteScreen() {
 
   const isDesktop = width >= 900;
 
-  const athlete = getAthlete(id);
+  const [athlete, setAthlete] =
+    useState<CoachAthlete | null>(null);
 
   const [sessions, setSessions] =
     useState<TrainingSession[]>([]);
@@ -116,17 +123,46 @@ export default function CoachAthleteScreen() {
       return;
     }
 
-    loadSessions();
+    loadData();
   }, [id]);
 
-  async function loadSessions() {
+  async function loadData() {
     try {
       setLoading(true);
       setError(null);
 
       const {
-        data,
-        error,
+        data: athleteData,
+        error: athleteError,
+      } = await supabase
+        .from("profiles")
+        .select(
+          "name, athlete_id"
+        )
+        .eq("athlete_id", id)
+        .eq("role", "athlete")
+        .maybeSingle();
+
+      if (athleteError) {
+        throw athleteError;
+      }
+
+      if (!athleteData) {
+        setAthlete(null);
+        setSessions([]);
+        return;
+      }
+
+      setAthlete({
+        id: athleteData.athlete_id,
+        name: athleteData.name,
+        status: "green",
+        statusText: "Redo för dagens pass",
+      });
+
+      const {
+        data: sessionData,
+        error: sessionError,
       } = await supabase
         .from("training_sessions")
         .select(
@@ -137,45 +173,51 @@ export default function CoachAthleteScreen() {
           ascending: true,
         });
 
-      if (error) {
-        throw error;
+      if (sessionError) {
+        throw sessionError;
       }
 
       const mapped: TrainingSession[] =
-        ((data ?? []) as SupabaseSession[]).map(
-          (session) => ({
-            id: session.id,
-            athleteId:
-              session.athlete_id,
-            date: session.date,
-            day: session.day,
-            slot: session.slot,
-            title: session.title,
-            description:
-              session.description ?? "",
-            type: session.type,
-          })
-        );
+        (
+          (sessionData ?? []) as SupabaseSession[]
+        ).map((session) => ({
+          id: session.id,
+          athleteId:
+            session.athlete_id,
+          date: session.date,
+          day: session.day,
+          slot: session.slot,
+          title: session.title,
+          description:
+            session.description ?? "",
+          type: session.type,
+        }));
 
       setSessions(mapped);
-
-      // Viktigt:
-      // Vi ändrar INTE weekStart här.
-      // Annars hoppar sidan alltid tillbaka
-      // till veckan för det första passet
-      // i databasen.
     } catch (error) {
       console.error(
-        "Kunde inte läsa träningsplanen:",
+        "Kunde inte läsa adepten:",
         error
       );
 
       setError(
-        "Kunde inte läsa träningsplanen."
+        "Kunde inte läsa adepten."
       );
     } finally {
       setLoading(false);
     }
+  }
+
+  if (loading) {
+    return (
+      <Screen>
+        <View style={styles.loading}>
+          <BodyText>
+            Laddar adept...
+          </BodyText>
+        </View>
+      </Screen>
+    );
   }
 
   if (!athlete) {
@@ -303,18 +345,13 @@ export default function CoachAthleteScreen() {
         }
       }
 
-      // Om passet sparades i en annan vecka
-      // än den vi tittade på, visar vi den nya
-      // veckan. Annars stannar vi kvar på
-      // aktuell vecka.
       setWeekStart(
         getMonday(
           parseDate(data.date)
         )
       );
 
-      await loadSessions();
-
+      await loadData();
       closePanel();
     } catch (error) {
       console.error(
@@ -353,8 +390,7 @@ export default function CoachAthleteScreen() {
         throw error;
       }
 
-      await loadSessions();
-
+      await loadData();
       closePanel();
     } catch (error) {
       console.error(
@@ -532,167 +568,157 @@ export default function CoachAthleteScreen() {
           </BodyText>
         )}
 
-        {loading ? (
-          <View
-            style={styles.loading}
-          >
-            <BodyText>
-              Laddar träningsplan...
-            </BodyText>
-          </View>
-        ) : (
+        <View
+          style={[
+            styles.workspace,
+            isDesktop &&
+              styles.workspaceDesktop,
+          ]}
+        >
           <View
             style={[
-              styles.workspace,
+              styles.calendarColumn,
               isDesktop &&
-                styles.workspaceDesktop,
+                styles.calendarColumnDesktop,
             ]}
           >
             <View
-              style={[
-                styles.calendarColumn,
-                isDesktop &&
-                  styles.calendarColumnDesktop,
-              ]}
+              style={styles.calendar}
             >
-              <View
-                style={styles.calendar}
-              >
-                {days.map((day) => (
-                  <DayRow
-                    key={day.date}
-                    day={day}
-                    onAddSession={() =>
-                      handleAddSession(
-                        day.date
-                      )
-                    }
-                    onEditSession={
-                      handleEditSession
-                    }
-                  />
-                ))}
-              </View>
+              {days.map((day) => (
+                <DayRow
+                  key={day.date}
+                  day={day}
+                  onAddSession={() =>
+                    handleAddSession(
+                      day.date
+                    )
+                  }
+                  onEditSession={
+                    handleEditSession
+                  }
+                />
+              ))}
             </View>
+          </View>
 
-            {isDesktop && (
-              <View
-                style={
-                  styles.panelColumn
-                }
-              >
-                {selectedDate ? (
-                  <Card>
+          {isDesktop && (
+            <View
+              style={
+                styles.panelColumn
+              }
+            >
+              {selectedDate ? (
+                <Card>
+                  <View
+                    style={
+                      styles.panelHeader
+                    }
+                  >
                     <View
                       style={
-                        styles.panelHeader
-                      }
-                    >
-                      <View
-                        style={
-                          styles.panelHeaderText
-                        }
-                      >
-                        <SectionLabel>
-                          {editingSession
-                            ? "REDIGERA PASS"
-                            : "NYTT PASS"}
-                        </SectionLabel>
-
-                        <BodyText
-                          style={
-                            styles.panelTitle
-                          }
-                        >
-                          {editingSession
-                            ? editingSession.title
-                            : "Nytt träningspass"}
-                        </BodyText>
-                      </View>
-
-                      <Pressable
-                        onPress={
-                          closePanel
-                        }
-                        style={
-                          styles.closeButton
-                        }
-                      >
-                        <BodyText
-                          style={
-                            styles.closeButtonText
-                          }
-                        >
-                          ×
-                        </BodyText>
-                      </Pressable>
-                    </View>
-
-                    <TrainingSessionForm
-                      date={
-                        selectedDate
-                      }
-                      initialSession={
-                        editingSession ??
-                        undefined
-                      }
-                      onSave={
-                        handleSaveSession
-                      }
-                      onDelete={
-                        editingSession
-                          ? handleDeleteSession
-                          : undefined
-                      }
-                    />
-
-                    {saving && (
-                      <BodyText
-                        style={
-                          styles.saving
-                        }
-                      >
-                        Sparar...
-                      </BodyText>
-                    )}
-                  </Card>
-                ) : (
-                  <Card>
-                    <View
-                      style={
-                        styles.emptyPanel
+                        styles.panelHeaderText
                       }
                     >
                       <SectionLabel>
-                        TRÄNINGSPLANERING
+                        {editingSession
+                          ? "REDIGERA PASS"
+                          : "NYTT PASS"}
                       </SectionLabel>
 
                       <BodyText
                         style={
-                          styles.emptyPanelTitle
+                          styles.panelTitle
                         }
                       >
-                        Välj en dag
-                      </BodyText>
-
-                      <BodyText
-                        style={
-                          styles.emptyPanelText
-                        }
-                      >
-                        Klicka på + för att
-                        lägga till ett pass,
-                        eller klicka på ett
-                        befintligt pass för
-                        att redigera det.
+                        {editingSession
+                          ? editingSession.title
+                          : "Nytt träningspass"}
                       </BodyText>
                     </View>
-                  </Card>
-                )}
-              </View>
-            )}
-          </View>
-        )}
+
+                    <Pressable
+                      onPress={
+                        closePanel
+                      }
+                      style={
+                        styles.closeButton
+                      }
+                    >
+                      <BodyText
+                        style={
+                          styles.closeButtonText
+                        }
+                      >
+                        ×
+                      </BodyText>
+                    </Pressable>
+                  </View>
+
+                  <TrainingSessionForm
+                    date={
+                      selectedDate
+                    }
+                    initialSession={
+                      editingSession ??
+                      undefined
+                    }
+                    onSave={
+                      handleSaveSession
+                    }
+                    onDelete={
+                      editingSession
+                        ? handleDeleteSession
+                        : undefined
+                    }
+                  />
+
+                  {saving && (
+                    <BodyText
+                      style={
+                        styles.saving
+                      }
+                    >
+                      Sparar...
+                    </BodyText>
+                  )}
+                </Card>
+              ) : (
+                <Card>
+                  <View
+                    style={
+                      styles.emptyPanel
+                    }
+                  >
+                    <SectionLabel>
+                      TRÄNINGSPLANERING
+                    </SectionLabel>
+
+                    <BodyText
+                      style={
+                        styles.emptyPanelTitle
+                      }
+                    >
+                      Välj en dag
+                    </BodyText>
+
+                    <BodyText
+                      style={
+                        styles.emptyPanelText
+                      }
+                    >
+                      Klicka på + för att
+                      lägga till ett pass,
+                      eller klicka på ett
+                      befintligt pass för
+                      att redigera det.
+                    </BodyText>
+                  </View>
+                </Card>
+              )}
+            </View>
+          )}
+        </View>
 
         {!isDesktop &&
           selectedDate && (
@@ -931,10 +957,12 @@ function createWeekDays(
       return {
         date,
         day,
-        sessions: sessions.filter(
-          (session) =>
-            session.date === date
-        ),
+        sessions:
+          sessions.filter(
+            (session) =>
+              session.date ===
+              date
+          ),
       };
     }
   );
@@ -1060,7 +1088,7 @@ function getISOWeek(
         yearStart.getTime()
       ) /
         86400000 +
-      1
+        1
     ) / 7
   );
 }
@@ -1299,12 +1327,9 @@ const styles =
       paddingHorizontal: 14,
       paddingVertical: 12,
       borderRadius: 10,
-
       backgroundColor: "#FFFFFF",
-
       borderWidth: 1,
       borderColor: "#D1D5DB",
-
       shadowColor: "#000",
       shadowOpacity: 0.04,
       shadowRadius: 4,
@@ -1312,7 +1337,6 @@ const styles =
         width: 0,
         height: 2,
       },
-
       elevation: 1,
     },
 

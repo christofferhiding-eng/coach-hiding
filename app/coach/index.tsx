@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -13,14 +13,66 @@ import BodyText from "@/components/ui/BodyText";
 import Metric from "@/components/ui/Metric";
 import SectionLabel from "@/components/ui/SectionLabel";
 
-import { athletes } from "@/features/athletes";
 import { supabase } from "@/lib/supabase";
 import { importEricTrainingPlan } from "@/features/training-plan/importEric";
 
+type CoachAthlete = {
+  id: string;
+  name: string;
+  status: "green" | "yellow" | "red";
+  statusText: string;
+  score: number;
+  nextKeySession: string;
+};
+
 export default function CoachHomeScreen() {
+  const [athletes, setAthletes] = useState<CoachAthlete[]>([]);
+  const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
   const [importMessage, setImportMessage] =
     useState<string | null>(null);
+
+  useEffect(() => {
+    async function loadAthletes() {
+      try {
+        const { data, error } = await supabase
+          .from("profiles")
+          .select("name, athlete_id")
+          .eq("role", "athlete")
+          .order("name");
+
+        if (error) {
+          console.error(
+            "Kunde inte läsa adepter:",
+            error
+          );
+          return;
+        }
+
+        const mappedAthletes: CoachAthlete[] = (data ?? [])
+          .filter((profile) => profile.athlete_id)
+          .map((profile) => ({
+            id: profile.athlete_id as string,
+            name: profile.name,
+            status: "green",
+            statusText: "Redo för dagens pass",
+            score: 0,
+            nextKeySession: "Ingen träning planerad ännu",
+          }));
+
+        setAthletes(mappedAthletes);
+      } catch (error) {
+        console.error(
+          "Kunde inte läsa adepter:",
+          error
+        );
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadAthletes();
+  }, []);
 
   async function handleLogout() {
     await supabase.auth.signOut();
@@ -88,54 +140,65 @@ export default function CoachHomeScreen() {
         ADEPTER
       </SectionLabel>
 
-      {athletes.map((athlete) => (
-        <Pressable
-          key={athlete.id}
-          onPress={() =>
-            router.push(
-              `/coach/athlete/${athlete.id}`
-            )
-          }
-        >
-          <Card>
-            <View style={styles.topRow}>
+      {loading ? (
+        <View style={styles.loading}>
+          <ActivityIndicator />
+          <BodyText style={styles.loadingText}>
+            Hämtar adepter...
+          </BodyText>
+        </View>
+      ) : (
+        athletes.map((athlete) => (
+          <Pressable
+            key={athlete.id}
+            onPress={() =>
+              router.push(
+                `/coach/athlete/${athlete.id}`
+              )
+            }
+          >
+            <Card>
+              <View style={styles.topRow}>
+                <BodyText
+                  style={styles.name}
+                >
+                  {athlete.name}
+                </BodyText>
+
+                <BodyText
+                  style={styles.score}
+                >
+                  {athlete.score > 0
+                    ? athlete.score.toFixed(1)
+                    : "–"}
+                </BodyText>
+              </View>
+
               <BodyText
-                style={styles.name}
+                style={styles.status}
               >
-                {athlete.name}
+                {getStatusIcon(
+                  athlete.status
+                )}{" "}
+                {athlete.statusText}
               </BodyText>
 
               <BodyText
-                style={styles.score}
+                style={styles.training}
               >
-                {athlete.score.toFixed(1)}
+                Nästa:{" "}
+                {athlete.nextKeySession}
               </BodyText>
-            </View>
 
-            <BodyText
-              style={styles.status}
-            >
-              {getStatusIcon(
-                athlete.status
-              )}{" "}
-              {athlete.statusText}
-            </BodyText>
-
-            <BodyText
-              style={styles.training}
-            >
-              Nästa:{" "}
-              {athlete.nextKeySession}
-            </BodyText>
-
-            <BodyText
-              style={styles.link}
-            >
-              Planera träning →
-            </BodyText>
-          </Card>
-        </Pressable>
-      ))}
+              <BodyText
+                style={styles.link}
+              >
+                Planera träning →
+              </BodyText>
+            </Card>
+          </Pressable>
+        ))
+      )}
 
       <View style={styles.importSection}>
         <SectionLabel>
@@ -155,7 +218,9 @@ export default function CoachHomeScreen() {
             <ActivityIndicator />
           ) : (
             <BodyText
-              style={styles.importButtonText}
+              style={
+                styles.importButtonText
+              }
             >
               Importera Erics testschema
             </BodyText>
@@ -222,6 +287,16 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontSize: 16,
     lineHeight: 22,
+    opacity: 0.7,
+  },
+
+  loading: {
+    marginTop: 20,
+    alignItems: "center",
+    gap: 8,
+  },
+
+  loadingText: {
     opacity: 0.7,
   },
 

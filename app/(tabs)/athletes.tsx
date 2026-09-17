@@ -8,12 +8,23 @@ import Card from "@/components/ui/Card";
 import Metric from "@/components/ui/Metric";
 import SectionLabel from "@/components/ui/SectionLabel";
 
-import { athletes } from "@/features/athletes";
+import { supabase } from "@/lib/supabase";
 import { CoachNote, getNotes } from "@/features/notes";
 import {
   getFeedbacks,
   TrainingFeedback,
 } from "@/features/training-feedback";
+
+type CoachAthlete = {
+  id: string;
+  name: string;
+  status: "green" | "yellow" | "red";
+  statusText: string;
+  score: number;
+  training: string;
+  weeklyDistance: number;
+  weeklyGoal: number;
+};
 
 const statusPriority = {
   red: 1,
@@ -22,21 +33,60 @@ const statusPriority = {
 };
 
 export default function AthletesScreen() {
+  const [athletes, setAthletes] = useState<CoachAthlete[]>([]);
   const [notes, setNotes] = useState<CoachNote[]>([]);
   const [feedbacks, setFeedbacks] = useState<TrainingFeedback[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function loadData() {
       try {
-        const [storedNotes, storedFeedbacks] = await Promise.all([
+        const [
+          { data: athleteProfiles, error: athleteError },
+          storedNotes,
+          storedFeedbacks,
+        ] = await Promise.all([
+          supabase
+            .from("profiles")
+            .select("id, name, athlete_id")
+            .eq("role", "athlete")
+            .order("name"),
           getNotes(),
           getFeedbacks(),
         ]);
 
+        if (athleteError) {
+          console.error(
+            "Kunde inte läsa adepter från Supabase:",
+            athleteError
+          );
+          return;
+        }
+        
+        console.log("ADEPTER FRÅN SUPABASE:", athleteProfiles);
+
+        const mappedAthletes: CoachAthlete[] = (
+          athleteProfiles ?? []
+        )
+          .filter((profile) => profile.athlete_id)
+          .map((profile) => ({
+            id: profile.athlete_id as string,
+            name: profile.name,
+            status: "green",
+            statusText: "Ingen träningsplan ännu",
+            score: 0,
+            training: "Ingen träning planerad ännu",
+            weeklyDistance: 0,
+            weeklyGoal: 0,
+          }));
+
+        setAthletes(mappedAthletes);
         setNotes(storedNotes);
         setFeedbacks(storedFeedbacks);
       } catch (error) {
         console.error("Kunde inte läsa coachdata:", error);
+      } finally {
+        setLoading(false);
       }
     }
 
@@ -75,34 +125,46 @@ export default function AthletesScreen() {
         <Metric>Dina löpare</Metric>
       </View>
 
-      {needsAttention.length > 0 && (
+      {loading ? (
+        <BodyText style={styles.loading}>
+          Hämtar adepter...
+        </BodyText>
+      ) : athletes.length === 0 ? (
+        <BodyText style={styles.empty}>
+          Inga adepter har registrerat sig ännu.
+        </BodyText>
+      ) : (
         <>
-          <SectionLabel>KRÄVER UPPMÄRKSAMHET</SectionLabel>
+          {needsAttention.length > 0 && (
+            <>
+              <SectionLabel>KRÄVER UPPMÄRKSAMHET</SectionLabel>
 
-          {needsAttention.map((athlete) => (
-            <AthleteCard
-              key={athlete.id}
-              athlete={athlete}
-              note={getNoteForAthlete(athlete.id)}
-              feedback={getFeedbackForAthlete(athlete.id)}
-            />
-          ))}
+              {needsAttention.map((athlete) => (
+                <AthleteCard
+                  key={athlete.id}
+                  athlete={athlete}
+                  note={getNoteForAthlete(athlete.id)}
+                  feedback={getFeedbackForAthlete(athlete.id)}
+                />
+              ))}
+            </>
+          )}
+
+          {readyAthletes.length > 0 && (
+            <View style={styles.section}>
+              <SectionLabel>ÖVRIGA ADEPTER</SectionLabel>
+
+              {readyAthletes.map((athlete) => (
+                <AthleteCard
+                  key={athlete.id}
+                  athlete={athlete}
+                  note={getNoteForAthlete(athlete.id)}
+                  feedback={getFeedbackForAthlete(athlete.id)}
+                />
+              ))}
+            </View>
+          )}
         </>
-      )}
-
-      {readyAthletes.length > 0 && (
-        <View style={styles.section}>
-          <SectionLabel>ÖVRIGA ADEPTER</SectionLabel>
-
-          {readyAthletes.map((athlete) => (
-            <AthleteCard
-              key={athlete.id}
-              athlete={athlete}
-              note={getNoteForAthlete(athlete.id)}
-              feedback={getFeedbackForAthlete(athlete.id)}
-            />
-          ))}
-        </View>
       )}
     </Screen>
   );
@@ -113,14 +175,17 @@ function AthleteCard({
   note,
   feedback,
 }: {
-  athlete: (typeof athletes)[number];
+  athlete: CoachAthlete;
   note?: CoachNote;
   feedback?: TrainingFeedback;
 }) {
-  const progress = Math.min(
-    (athlete.weeklyDistance / athlete.weeklyGoal) * 100,
-    100
-  );
+  const progress =
+    athlete.weeklyGoal > 0
+      ? Math.min(
+          (athlete.weeklyDistance / athlete.weeklyGoal) * 100,
+          100
+        )
+      : 0;
 
   const statusColor = getStatusColor(athlete.status);
 
@@ -140,7 +205,9 @@ function AthleteCard({
               { color: statusColor },
             ]}
           >
-            {athlete.score.toFixed(1)}
+            {athlete.score > 0
+              ? athlete.score.toFixed(1)
+              : "–"}
           </BodyText>
         </View>
 
@@ -240,6 +307,16 @@ const styles = StyleSheet.create({
 
   section: {
     marginTop: 20,
+  },
+
+  loading: {
+    marginTop: 20,
+    opacity: 0.7,
+  },
+
+  empty: {
+    marginTop: 20,
+    opacity: 0.7,
   },
 
   topRow: {
