@@ -25,6 +25,12 @@ type CoachAthlete = {
   nextKeySession: string;
 };
 
+type TrainingSession = {
+  athlete_id: string;
+  date: string;
+  title: string;
+};
+
 export default function CoachHomeScreen() {
   const [athletes, setAthletes] = useState<CoachAthlete[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,30 +41,90 @@ export default function CoachHomeScreen() {
   useEffect(() => {
     async function loadAthletes() {
       try {
-        const { data, error } = await supabase
+        /*
+         * 1. Hämta alla adepter.
+         */
+        const {
+          data: profiles,
+          error: profileError,
+        } = await supabase
           .from("profiles")
           .select("name, athlete_id")
           .eq("role", "athlete")
           .order("name");
 
-        if (error) {
+        if (profileError) {
           console.error(
             "Kunde inte läsa adepter:",
-            error
+            profileError
           );
           return;
         }
 
-        const mappedAthletes: CoachAthlete[] = (data ?? [])
-          .filter((profile) => profile.athlete_id)
-          .map((profile) => ({
-            id: profile.athlete_id as string,
-            name: profile.name,
-            status: "green",
-            statusText: "Redo för dagens pass",
-            score: 0,
-            nextKeySession: "Ingen träning planerad ännu",
-          }));
+        /*
+         * 2. Hämta alla framtida träningspass.
+         */
+        const today = new Date()
+          .toISOString()
+          .split("T")[0];
+
+        const {
+          data: sessions,
+          error: sessionError,
+        } = await supabase
+          .from("training_sessions")
+          .select(
+            "athlete_id, date, title"
+          )
+          .gte("date", today)
+          .order("date", {
+            ascending: true,
+          });
+
+        if (sessionError) {
+          console.error(
+            "Kunde inte läsa träningspass:",
+            sessionError
+          );
+        }
+
+        const trainingSessions =
+          (sessions ?? []) as TrainingSession[];
+
+        /*
+         * 3. Bygg coachlistan och hitta
+         *    nästa pass för varje adept.
+         */
+        const mappedAthletes: CoachAthlete[] =
+          (profiles ?? [])
+            .filter(
+              (profile) =>
+                profile.athlete_id
+            )
+            .map((profile) => {
+              const athleteId =
+                profile.athlete_id as string;
+
+              const nextSession =
+                trainingSessions.find(
+                  (session) =>
+                    session.athlete_id ===
+                    athleteId
+                );
+
+              return {
+                id: athleteId,
+                name: profile.name,
+                status: "green",
+                statusText:
+                  "Redo för dagens pass",
+                score: 0,
+                nextKeySession:
+                  nextSession
+                    ? nextSession.title
+                    : "Ingen träning planerad ännu",
+              };
+            });
 
         setAthletes(mappedAthletes);
       } catch (error) {
@@ -88,7 +154,9 @@ export default function CoachHomeScreen() {
         await importEricTrainingPlan();
 
       setImportMessage(
-        `Klart! ${sessions?.length ?? 0} träningspass importerades för Eric.`
+        `Klart! ${
+          sessions?.length ?? 0
+        } träningspass importerades för Eric.`
       );
     } catch (error) {
       console.error(
