@@ -1,13 +1,11 @@
 import React, {
   useEffect,
-  useRef,
   useState,
 } from "react";
 
 import {
   ActivityIndicator,
   Pressable,
-  ScrollView,
   StyleSheet,
   TextInput,
   View,
@@ -92,6 +90,29 @@ type AthleteProfile = {
   athlete_id: string | null;
 };
 
+type TrainingCycleType =
+  | "grundträning"
+  | "tävlingsförberedande"
+  | "specifik period"
+  | "tävlingsperiod";
+
+type TrainingCycle = {
+  id: string;
+  athlete_id: string;
+  type: TrainingCycleType;
+  name: string;
+  start_date: string;
+  end_date: string;
+  description: string | null;
+};
+
+const CYCLE_TYPE_LABELS: Record<TrainingCycleType, string> = {
+  "grundträning": "Grundträning",
+  "tävlingsförberedande": "Tävlingsförberedande",
+  "specifik period": "Specifik period",
+  "tävlingsperiod": "Tävlingsperiod",
+};
+
 export default function AthleteHomeScreen() {
   const { id } =
     useLocalSearchParams<{ id: string }>();
@@ -101,17 +122,23 @@ export default function AthleteHomeScreen() {
 
   const isDesktop = width >= 900;
 
-  const screenRef = useRef<ScrollView>(null);
-  const detailY = useRef(0);
-
   const [athlete, setAthlete] =
     useState<AthleteProfile | null>(null);
 
   const [weeks, setWeeks] =
     useState<TrainingWeek[]>([]);
 
+  const [cycles, setCycles] =
+    useState<TrainingCycle[]>([]);
+
   const [weekIndex, setWeekIndex] =
     useState(0);
+
+  const [viewMode, setViewMode] =
+    useState<"week" | "month">("week");
+
+  const [monthStart, setMonthStart] =
+    useState(() => getMonthStart(formatISODate(new Date())));
 
   const [selectedSessionId, setSelectedSessionId] =
     useState<string | null>(null);
@@ -268,6 +295,26 @@ export default function AthleteHomeScreen() {
             )
           );
 
+        // Lägg alltid till innevarande vecka, även om
+        // det ännu inte finns några träningspass den veckan.
+        const today = formatISODate(new Date());
+        const currentWeekStart = getMonday(today);
+        const hasCurrentWeek = sortedWeeks.some(
+          (week) => week.startDate === currentWeekStart
+        );
+
+        if (!hasCurrentWeek) {
+          sortedWeeks.push({
+            startDate: currentWeekStart,
+            title: `Vecka ${getWeekNumber(currentWeekStart)}`,
+            sessions: [],
+          });
+
+          sortedWeeks.sort((a, b) =>
+            a.startDate.localeCompare(b.startDate)
+          );
+        }
+
         for (const week of sortedWeeks) {
           week.sessions.sort(
             (a, b) => {
@@ -289,6 +336,26 @@ export default function AthleteHomeScreen() {
         }
 
         setWeeks(sortedWeeks);
+
+        const {
+          data: cycleData,
+          error: cycleError,
+        } = await supabase
+          .from("training_cycles")
+          .select(
+            "id, athlete_id, type, name, start_date, end_date, description"
+          )
+          .eq("athlete_id", id)
+          .order("start_date", { ascending: true });
+
+        if (cycleError) {
+          console.error(
+            "Kunde inte läsa träningsperioderna:",
+            cycleError
+          );
+        } else {
+          setCycles((cycleData ?? []) as TrainingCycle[]);
+        }
 
         /*
          * 4. Ladda kommentarer.
@@ -342,9 +409,6 @@ export default function AthleteHomeScreen() {
         if (!sortedWeeks.length) {
           return;
         }
-
-        const today =
-          formatISODate(new Date());
 
         const currentWeekIndex =
           sortedWeeks.findIndex(
@@ -410,15 +474,6 @@ export default function AthleteHomeScreen() {
     );
 
     setCommentMessage(null);
-
-    const timeout = setTimeout(() => {
-      screenRef.current?.scrollTo({
-        y: Math.max(detailY.current - 20, 0),
-        animated: true,
-      });
-    }, 80);
-
-    return () => clearTimeout(timeout);
   }, [
     selectedSessionId,
     comments,
@@ -612,55 +667,23 @@ export default function AthleteHomeScreen() {
       id
     );
 
-  const currentWeekSessions =
-    week.sessions.filter(
-      (session) =>
-        session.athleteId === id &&
-        session.type !== "rest"
-    );
+  const allSessions = weeks.flatMap(
+    (trainingWeek) => trainingWeek.sessions
+  );
 
-  const qualityCount =
-    currentWeekSessions.filter(
-      (session) => session.type === "quality"
-    ).length;
+  const monthDays = createMonthDays(
+    monthStart,
+    allSessions
+  );
 
-  const longCount =
-    currentWeekSessions.filter(
-      (session) => session.type === "long"
-    ).length;
+  const selectedMonthSession = allSessions.find(
+    (session) => session.id === selectedSessionId
+  ) ?? null;
 
-  const upcomingSessions =
-    weeks
-      .flatMap((item) => item.sessions)
-      .filter(
-        (session) =>
-          session.athleteId === id &&
-          session.type !== "rest" &&
-          session.date >= formatISODate(new Date())
-      )
-      .sort((a, b) => {
-        const dateCompare =
-          a.date.localeCompare(b.date);
-
-        if (dateCompare !== 0) {
-          return dateCompare;
-        }
-
-        return (
-          getSlotOrder(a.slot) -
-          getSlotOrder(b.slot)
-        );
-      });
-
-  const nextUpcomingSessions =
-    nextSession
-      ? upcomingSessions
-          .filter(
-            (session) =>
-              session.id !== nextSession.id
-          )
-          .slice(0, 3)
-      : upcomingSessions.slice(0, 3);
+  const activeSelectedSession =
+    viewMode === "month"
+      ? selectedMonthSession
+      : selectedSession;
 
   return (
     <>
@@ -670,7 +693,7 @@ export default function AthleteHomeScreen() {
         }}
       />
 
-      <Screen ref={screenRef}>
+      <Screen>
         <View
           style={[
             styles.header,
@@ -710,35 +733,6 @@ export default function AthleteHomeScreen() {
                   : "Logga ut"}
               </BodyText>
             </Pressable>
-          </View>
-        </View>
-
-        <View style={styles.dashboardStats}>
-          <View style={styles.dashboardStatCard}>
-            <BodyText style={styles.dashboardStatValue}>
-              {currentWeekSessions.length}
-            </BodyText>
-            <BodyText style={styles.dashboardStatLabel}>
-              Planerade pass
-            </BodyText>
-          </View>
-
-          <View style={styles.dashboardStatCard}>
-            <BodyText style={styles.dashboardStatValue}>
-              {qualityCount}
-            </BodyText>
-            <BodyText style={styles.dashboardStatLabel}>
-              Kvalitetspass
-            </BodyText>
-          </View>
-
-          <View style={styles.dashboardStatCard}>
-            <BodyText style={styles.dashboardStatValue}>
-              {longCount}
-            </BodyText>
-            <BodyText style={styles.dashboardStatLabel}>
-              Långpass
-            </BodyText>
           </View>
         </View>
 
@@ -783,155 +777,190 @@ export default function AthleteHomeScreen() {
           </Card>
         )}
 
-        {nextUpcomingSessions.length > 0 && (
-          <Card>
-            <SectionLabel>
-              KOMMANDE PASS
-            </SectionLabel>
+        <View style={styles.viewToggle}>
+          <Pressable
+            onPress={() => setViewMode("week")}
+            style={[
+              styles.viewToggleButton,
+              viewMode === "week" && styles.viewToggleButtonActive,
+            ]}
+          >
+            <BodyText
+              style={[
+                styles.viewToggleText,
+                viewMode === "week" && styles.viewToggleTextActive,
+              ]}
+            >
+              Veckovy
+            </BodyText>
+          </Pressable>
 
-            <View style={styles.upcomingList}>
-              {nextUpcomingSessions.map((session) => (
-                <Pressable
-                  key={session.id}
-                  onPress={() =>
-                    setSelectedSessionId(session.id)
-                  }
-                  style={[
-                    styles.upcomingSession,
-                    getSessionStyle(session.type),
-                  ]}
-                >
-                  <View style={styles.upcomingSessionMain}>
-                    <BodyText style={styles.upcomingDate}>
-                      {formatLongDate(session.date)}
-                    </BodyText>
-                    <BodyText style={styles.upcomingTitle}>
-                      {TYPE_ICONS[session.type]} {session.title}
-                    </BodyText>
-                  </View>
+          <Pressable
+            onPress={() => setViewMode("month")}
+            style={[
+              styles.viewToggleButton,
+              viewMode === "month" && styles.viewToggleButtonActive,
+            ]}
+          >
+            <BodyText
+              style={[
+                styles.viewToggleText,
+                viewMode === "month" && styles.viewToggleTextActive,
+              ]}
+            >
+              Månadsvy
+            </BodyText>
+          </Pressable>
+        </View>
 
-                  <BodyText style={styles.upcomingArrow}>
-                    →
-                  </BodyText>
-                </Pressable>
-              ))}
+        {viewMode === "week" ? (
+          <View
+            style={[
+              styles.weekNavigation,
+              isDesktop &&
+                styles.weekNavigationDesktop,
+            ]}
+          >
+            <Pressable
+              onPress={() =>
+                canGoBack &&
+                setWeekIndex(
+                  (current) =>
+                    current - 1
+                )
+              }
+              disabled={!canGoBack}
+              style={[
+                styles.navigationButton,
+                !canGoBack &&
+                  styles.navigationButtonDisabled,
+              ]}
+            >
+              <BodyText
+                style={styles.navigationText}
+              >
+                ←
+              </BodyText>
+            </Pressable>
+
+            <View style={styles.weekTitle}>
+              <SectionLabel>
+                TRÄNINGSVECKA
+              </SectionLabel>
+
+              <BodyText style={styles.weekNumber}>
+                {week.title}
+              </BodyText>
+
+              <BodyText style={styles.weekDate}>
+                {formatWeekRange(week.startDate)}
+              </BodyText>
             </View>
-          </Card>
+
+            <Pressable
+              onPress={() =>
+                canGoForward &&
+                setWeekIndex(
+                  (current) =>
+                    current + 1
+                )
+              }
+              disabled={!canGoForward}
+              style={[
+                styles.navigationButton,
+                !canGoForward &&
+                  styles.navigationButtonDisabled,
+              ]}
+            >
+              <BodyText style={styles.navigationText}>
+                →
+              </BodyText>
+            </Pressable>
+          </View>
+        ) : (
+          <View
+            style={[
+              styles.weekNavigation,
+              isDesktop &&
+                styles.weekNavigationDesktop,
+            ]}
+          >
+            <Pressable
+              onPress={() =>
+                setMonthStart(addMonths(monthStart, -1))
+              }
+              style={styles.navigationButton}
+            >
+              <BodyText style={styles.navigationText}>
+                ←
+              </BodyText>
+            </Pressable>
+
+            <View style={styles.weekTitle}>
+              <SectionLabel>
+                TRÄNINGSKALENDER
+              </SectionLabel>
+
+              <BodyText style={styles.weekNumber}>
+                {formatMonthTitle(monthStart)}
+              </BodyText>
+            </View>
+
+            <Pressable
+              onPress={() =>
+                setMonthStart(addMonths(monthStart, 1))
+              }
+              style={styles.navigationButton}
+            >
+              <BodyText style={styles.navigationText}>
+                →
+              </BodyText>
+            </Pressable>
+          </View>
         )}
 
-        <View
-          style={[
-            styles.weekNavigation,
-            isDesktop &&
-              styles.weekNavigationDesktop,
-          ]}
-        >
-          <Pressable
-            onPress={() =>
-              canGoBack &&
-              setWeekIndex(
-                (current) =>
-                  current - 1
-              )
-            }
-            disabled={!canGoBack}
+        <CycleOverview
+          cycles={cycles}
+          startDate={
+            viewMode === "week"
+              ? week.startDate
+              : monthStart
+          }
+          endDate={
+            viewMode === "week"
+              ? addDays(week.startDate, 6)
+              : getMonthEnd(monthStart)
+          }
+        />
+
+        {viewMode === "week" ? (
+          <View
             style={[
-              styles.navigationButton,
-              !canGoBack &&
-                styles.navigationButtonDisabled,
+              styles.week,
+              isDesktop &&
+                styles.weekDesktop,
             ]}
           >
-            <BodyText
-              style={
-                styles.navigationText
-              }
-            >
-              ←
-            </BodyText>
-          </Pressable>
-
-          <View
-            style={
-              styles.weekTitle
-            }
-          >
-            <SectionLabel>
-              TRÄNINGSVECKA
-            </SectionLabel>
-
-            <BodyText
-              style={
-                styles.weekNumber
-              }
-            >
-              {week.title}
-            </BodyText>
-
-            <BodyText
-              style={
-                styles.weekDate
-              }
-            >
-              {formatWeekRange(
-                week.startDate
-              )}
-            </BodyText>
+            {days.map((day) => (
+              <DayCard
+                key={day.date}
+                day={day}
+                selectedSessionId={selectedSessionId}
+                onSelectSession={setSelectedSessionId}
+              />
+            ))}
           </View>
+        ) : (
+          <MonthCalendar
+            days={monthDays}
+            selectedSessionId={selectedSessionId}
+            onSelectSession={setSelectedSessionId}
+            isDesktop={isDesktop}
+          />
+        )}
 
-          <Pressable
-            onPress={() =>
-              canGoForward &&
-              setWeekIndex(
-                (current) =>
-                  current + 1
-              )
-            }
-            disabled={!canGoForward}
-            style={[
-              styles.navigationButton,
-              !canGoForward &&
-                styles.navigationButtonDisabled,
-            ]}
-          >
-            <BodyText
-              style={
-                styles.navigationText
-              }
-            >
-              →
-            </BodyText>
-          </Pressable>
-        </View>
-
-        <View
-          style={[
-            styles.week,
-            isDesktop &&
-              styles.weekDesktop,
-          ]}
-        >
-          {days.map((day) => (
-            <DayCard
-              key={day.date}
-              day={day}
-              selectedSessionId={
-                selectedSessionId
-              }
-              onSelectSession={
-                setSelectedSessionId
-              }
-            />
-          ))}
-        </View>
-
-        {selectedSession && (
-          <View
-            onLayout={(event) => {
-              detailY.current =
-                event.nativeEvent.layout.y;
-            }}
-          >
-            <Card>
+        {activeSelectedSession && (
+          <Card>
             <View
               style={
                 styles.detailHeader
@@ -953,11 +982,11 @@ export default function AthleteHomeScreen() {
                 >
                   {
                     TYPE_ICONS[
-                      selectedSession.type
+                      activeSelectedSession.type
                     ]
                   }{" "}
                   {
-                    selectedSession.title
+                    activeSelectedSession.title
                   }
                 </BodyText>
               </View>
@@ -989,12 +1018,12 @@ export default function AthleteHomeScreen() {
             >
               {
                 SLOT_ICONS[
-                  selectedSession.slot
+                  activeSelectedSession.slot
                 ]
               }{" "}
               {
                 SLOT_LABELS[
-                  selectedSession.slot
+                  activeSelectedSession.slot
                 ]
               }
             </BodyText>
@@ -1005,7 +1034,7 @@ export default function AthleteHomeScreen() {
               }
             >
               {
-                selectedSession.description
+                activeSelectedSession.description
               }
             </BodyText>
 
@@ -1077,8 +1106,7 @@ export default function AthleteHomeScreen() {
                 </BodyText>
               )}
             </View>
-            </Card>
-          </View>
+          </Card>
         )}
       </Screen>
     </>
@@ -1264,6 +1292,118 @@ function DayCard({
   );
 }
 
+function CycleOverview({
+  cycles,
+  startDate,
+  endDate,
+}: {
+  cycles: TrainingCycle[];
+  startDate: string;
+  endDate: string;
+}) {
+  const visibleCycles = cycles.filter(
+    (cycle) =>
+      cycle.start_date <= endDate &&
+      cycle.end_date >= startDate
+  );
+
+  if (!visibleCycles.length) {
+    return null;
+  }
+
+  return (
+    <Card>
+      <SectionLabel>TRÄNINGSPERIOD</SectionLabel>
+      <View style={styles.cycleOverviewList}>
+        {visibleCycles.map((cycle) => (
+          <View key={cycle.id} style={styles.cycleOverviewItem}>
+            <BodyText style={styles.cycleOverviewType}>
+              {CYCLE_TYPE_LABELS[cycle.type]}
+            </BodyText>
+            <BodyText style={styles.cycleOverviewName}>
+              {cycle.name}
+            </BodyText>
+            <BodyText style={styles.cycleOverviewDates}>
+              {formatCycleDate(cycle.start_date)}–{formatCycleDate(cycle.end_date)}
+            </BodyText>
+            {cycle.description ? (
+              <BodyText style={styles.cycleOverviewDescription}>
+                {cycle.description}
+              </BodyText>
+            ) : null}
+          </View>
+        ))}
+      </View>
+    </Card>
+  );
+}
+
+function MonthCalendar({
+  days,
+  selectedSessionId,
+  onSelectSession,
+  isDesktop,
+}: {
+  days: Array<{
+    date: string;
+    dayNumber: number;
+    isCurrentMonth: boolean;
+    sessions: AthleteTrainingSession[];
+  }>;
+  selectedSessionId: string | null;
+  onSelectSession: (sessionId: string | null) => void;
+  isDesktop: boolean;
+}) {
+  return (
+    <View style={[styles.monthGrid, isDesktop && styles.monthGridDesktop]}>
+      {days.map((day) => (
+        <View
+          key={day.date}
+          style={[
+            styles.monthDay,
+            !day.isCurrentMonth && styles.monthDayOutside,
+          ]}
+        >
+          <BodyText style={styles.monthDayNumber}>
+            {day.dayNumber}
+          </BodyText>
+
+          {day.sessions.slice(0, 4).map((session) => {
+            const selected = selectedSessionId === session.id;
+
+            return (
+              <Pressable
+                key={session.id}
+                onPress={() =>
+                  onSelectSession(selected ? null : session.id)
+                }
+                style={[
+                  styles.monthSession,
+                  getSessionStyle(session.type),
+                  selected && styles.sessionSelected,
+                ]}
+              >
+                <BodyText
+                  numberOfLines={2}
+                  style={styles.monthSessionText}
+                >
+                  {TYPE_ICONS[session.type]} {session.title}
+                </BodyText>
+              </Pressable>
+            );
+          })}
+
+          {day.sessions.length > 4 && (
+            <BodyText style={styles.monthMoreText}>
+              +{day.sessions.length - 4} till
+            </BodyText>
+          )}
+        </View>
+      ))}
+    </View>
+  );
+}
+
 function getSessionStyle(
   type: SessionType
 ) {
@@ -1280,6 +1420,71 @@ function getSessionStyle(
   }
 
   return styles.sessionEasy;
+}
+
+function parseDate(date: string) {
+  return new Date(`${date}T12:00:00Z`);
+}
+
+function getMonthEnd(date: string) {
+  const start = parseDate(date);
+  const end = new Date(
+    Date.UTC(
+      start.getUTCFullYear(),
+      start.getUTCMonth() + 1,
+      0
+    )
+  );
+
+  return formatISODate(end);
+}
+
+function formatCycleDate(date: string) {
+  return parseDate(date).toLocaleDateString("sv-SE", {
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  });
+}
+
+function getMonthStart(date: string) {
+  return `${date.slice(0, 7)}-01`;
+}
+
+function addMonths(date: string, amount: number) {
+  const current = new Date(`${date}T12:00:00`);
+  current.setMonth(current.getMonth() + amount);
+  current.setDate(1);
+  return formatISODate(current);
+}
+
+function formatMonthTitle(date: string) {
+  return new Date(`${date}T12:00:00`).toLocaleDateString(
+    "sv-SE",
+    { month: "long", year: "numeric" }
+  );
+}
+
+function createMonthDays(
+  monthStart: string,
+  sessions: AthleteTrainingSession[]
+) {
+  const firstDay = new Date(`${monthStart}T12:00:00`);
+  const weekday = firstDay.getDay() || 7;
+  const gridStart = addDays(monthStart, -(weekday - 1));
+  const currentMonth = monthStart.slice(0, 7);
+
+  return Array.from({ length: 42 }, (_, index) => {
+    const date = addDays(gridStart, index);
+    return {
+      date,
+      dayNumber: Number(date.slice(8, 10)),
+      isCurrentMonth: date.startsWith(currentMonth),
+      sessions: sessions
+        .filter((session) => session.date === date)
+        .sort((a, b) => getSlotOrder(a.slot) - getSlotOrder(b.slot)),
+    };
+  });
 }
 
 function createWeekDays(
@@ -1609,68 +1814,75 @@ const styles =
       opacity: 0.7,
     },
 
-    dashboardStats: {
-      flexDirection: "row",
+    cycleOverviewList: {
+      marginTop: 10,
       gap: 10,
-      marginBottom: 16,
     },
 
-    dashboardStatCard: {
-      flex: 1,
-      minHeight: 82,
-      paddingHorizontal: 14,
-      paddingVertical: 13,
-      borderRadius: 12,
-      backgroundColor: "rgba(255,255,255,0.05)",
-      justifyContent: "center",
-    },
-
-    dashboardStatValue: {
-      fontSize: 24,
-      fontWeight: "700",
-    },
-
-    dashboardStatLabel: {
-      marginTop: 3,
-      fontSize: 12,
-      opacity: 0.5,
-    },
-
-    upcomingList: {
-      gap: 10,
-      marginTop: 14,
-    },
-
-    upcomingSession: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      padding: 13,
+    cycleOverviewItem: {
+      padding: 12,
       borderRadius: 10,
+      backgroundColor: "#F0F8F3",
       borderWidth: 1,
+      borderColor: "#C7E5D1",
     },
 
-    upcomingSessionMain: {
-      flex: 1,
-      paddingRight: 12,
-    },
-
-    upcomingDate: {
-      fontSize: 12,
-      color: "#4B5563",
-      opacity: 1,
-    },
-
-    upcomingTitle: {
-      marginTop: 3,
-      fontSize: 15,
+    cycleOverviewType: {
+      fontSize: 11,
       fontWeight: "700",
-      color: "#111827",
+      color: "#278653",
+      textTransform: "uppercase",
     },
 
-    upcomingArrow: {
-      fontSize: 18,
-      color: "#374151",
+    cycleOverviewName: {
+      marginTop: 3,
+      fontSize: 16,
+      fontWeight: "700",
+      color: "#172033",
+    },
+
+    cycleOverviewDates: {
+      marginTop: 3,
+      fontSize: 12,
+      color: "#536174",
+    },
+
+    cycleOverviewDescription: {
+      marginTop: 6,
+      fontSize: 13,
+      lineHeight: 19,
+      color: "#536174",
+    },
+
+    viewToggle: {
+      flexDirection: "row",
+      alignSelf: "center",
+      marginTop: 8,
+      marginBottom: 14,
+      padding: 4,
+      borderRadius: 12,
+      backgroundColor: "rgba(255,255,255,0.08)",
+    },
+
+    viewToggleButton: {
+      paddingHorizontal: 18,
+      paddingVertical: 9,
+      borderRadius: 9,
+    },
+
+    viewToggleButtonActive: {
+      backgroundColor: "#8EE3B0",
+    },
+
+    viewToggleText: {
+      fontSize: 13,
+      fontWeight: "600",
+      opacity: 0.7,
+    },
+
+    viewToggleTextActive: {
+      color: "#111827",
+      opacity: 1,
     },
 
     weekNavigation: {
@@ -1854,6 +2066,58 @@ const styles =
       fontWeight: "600",
       color: "#374151",
       opacity: 0.8,
+    },
+
+    monthGrid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 6,
+    },
+
+    monthGridDesktop: {
+      gap: 8,
+    },
+
+    monthDay: {
+      // Seven equal columns so Monday starts at the far left and
+      // Sunday stays in the seventh column instead of wrapping early.
+      width: "13.2%",
+      minHeight: 112,
+      padding: 6,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: "rgba(255,255,255,0.10)",
+      backgroundColor: "rgba(255,255,255,0.04)",
+    },
+
+    monthDayOutside: {
+      opacity: 0.35,
+    },
+
+    monthDayNumber: {
+      fontSize: 12,
+      fontWeight: "700",
+      marginBottom: 4,
+    },
+
+    monthSession: {
+      marginTop: 4,
+      padding: 4,
+      borderRadius: 5,
+      borderWidth: 1,
+    },
+
+    monthSessionText: {
+      fontSize: 10,
+      lineHeight: 13,
+      color: "#111827",
+      fontWeight: "600",
+    },
+
+    monthMoreText: {
+      marginTop: 4,
+      fontSize: 10,
+      opacity: 0.6,
     },
 
     detailHeader: {

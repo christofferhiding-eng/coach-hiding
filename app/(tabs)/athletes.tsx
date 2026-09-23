@@ -256,7 +256,7 @@ function AthleteCard({
                 style={styles.feedbackText}
                 numberOfLines={2}
               >
-                "{feedback.comment}"
+                &quot;{feedback.comment}&quot;
               </BodyText>
             ) : null}
           </View>
