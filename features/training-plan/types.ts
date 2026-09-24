@@ -1,5 +1,7 @@
 export type TrainingSlot =
+  | "none"
   | "morning"
+  | "lunch"
   | "afternoon"
   | "evening";
 

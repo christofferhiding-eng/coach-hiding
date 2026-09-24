@@ -10,13 +10,13 @@ import {
 import BodyText from "@/components/ui/BodyText";
 import SectionLabel from "@/components/ui/SectionLabel";
 
-import DatePickerCalendar from "./DatePickerCalendar";
-
 import {
   TrainingSession,
   TrainingSlot,
   TrainingType,
 } from "@/features/training-plan";
+
+import DatePickerCalendar from "./DatePickerCalendar";
 
 type Props = {
   date: string;
@@ -40,9 +40,19 @@ const slots: {
   icon: string;
 }[] = [
   {
+    value: "none",
+    label: "Ingen tid vald",
+    icon: "—",
+  },
+  {
     value: "morning",
     label: "Förmiddag",
     icon: "☀️",
+  },
+  {
+    value: "lunch",
+    label: "Lunch",
+    icon: "🍽️",
   },
   {
     value: "afternoon",
@@ -85,11 +95,10 @@ export default function TrainingSessionForm({
   onSave,
   onDelete,
 }: Props) {
-  const [selectedDate, setSelectedDate] =
-    useState(date);
+  const [selectedDate, setSelectedDate] = useState(date);
 
   const [slot, setSlot] = useState<TrainingSlot>(
-    initialSession?.slot ?? "morning"
+    initialSession?.slot ?? "none"
   );
 
   const [type, setType] = useState<TrainingType>(
@@ -100,10 +109,9 @@ export default function TrainingSessionForm({
     initialSession?.title ?? ""
   );
 
-  const [description, setDescription] =
-    useState(
-      initialSession?.description ?? ""
-    );
+  const [description, setDescription] = useState(
+    initialSession?.description ?? ""
+  );
 
   const isEditing =
     Boolean(initialSession) && !isCopying;
@@ -160,9 +168,7 @@ export default function TrainingSessionForm({
           {slots.map((item) => (
             <Pressable
               key={item.value}
-              onPress={() =>
-                setSlot(item.value)
-              }
+              onPress={() => setSlot(item.value)}
               style={[
                 styles.option,
                 slot === item.value &&
@@ -192,9 +198,7 @@ export default function TrainingSessionForm({
           {types.map((item) => (
             <Pressable
               key={item.value}
-              onPress={() =>
-                setType(item.value)
-              }
+              onPress={() => setType(item.value)}
               style={[
                 styles.option,
                 type === item.value &&
@@ -321,8 +325,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 10,
-    backgroundColor:
-      "rgba(255,255,255,0.08)",
+    backgroundColor: "rgba(255,255,255,0.08)",
   },
 
   optionSelected: {
@@ -341,14 +344,10 @@ const styles = StyleSheet.create({
   input: {
     minHeight: 48,
     borderWidth: 1,
-    borderColor:
-      "rgba(255,255,255,0.2)",
+    borderColor: "rgba(255,255,255,0.2)",
     borderRadius: 10,
     paddingHorizontal: 12,
-
-    // Ändrat från "white"
     color: "#111111",
-
     fontSize: 16,
   },
 
