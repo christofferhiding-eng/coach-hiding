@@ -421,15 +421,14 @@ export default function AthleteHomeScreen() {
          */
 
         const {
-          data: trainingCommentData,
+          data: rawTrainingCommentData,
           error: trainingCommentError,
-        } = await supabase
-          .from("training_comments")
-          .select(
-            "id, training_session_id, athlete_id, author_id, author_role, message, created_at, read_at"
-          )
-          .eq("athlete_id", id)
-          .order("created_at", { ascending: true });
+        } = await supabase.rpc(
+          "get_athlete_training_comments",
+          {
+            p_athlete_id: id,
+          }
+        );
 
         if (trainingCommentError) {
           console.error(
@@ -437,12 +436,13 @@ export default function AthleteHomeScreen() {
             trainingCommentError
           );
         } else {
+          const trainingCommentData =
+            (rawTrainingCommentData ?? []) as TrainingComment[];
+
           const groupedComments:
             Record<string, TrainingComment[]> = {};
 
-          for (const item of trainingCommentData ?? []) {
-            const comment = item as TrainingComment;
-
+          for (const comment of trainingCommentData) {
             if (!groupedComments[comment.training_session_id]) {
               groupedComments[comment.training_session_id] = [];
             }
@@ -533,32 +533,14 @@ export default function AthleteHomeScreen() {
       setSavingComment(true);
       setCommentMessage(null);
 
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-
-      if (userError || !user) {
-        setCommentMessage("Du måste vara inloggad för att skicka ett meddelande.");
-        return;
-      }
-
-      const {
-        data,
-        error,
-      } = await supabase
-        .from("training_comments")
-        .insert({
-          training_session_id: selectedSessionId,
-          athlete_id: id,
-          author_id: user.id,
-          author_role: "athlete",
-          message: commentText.trim(),
-        })
-        .select(
-          "id, training_session_id, athlete_id, author_id, author_role, message, created_at, read_at"
-        )
-        .single();
+      const { data, error } = await supabase.rpc(
+        "create_training_comment",
+        {
+          p_training_session_id: selectedSessionId,
+          p_athlete_id: id,
+          p_message: commentText.trim(),
+        }
+      );
 
       if (error) {
         console.error(
@@ -573,17 +555,23 @@ export default function AthleteHomeScreen() {
         return;
       }
 
-      if (data) {
-        const newComment = data as TrainingComment;
+      if (!data) {
+        setCommentMessage(
+          "Meddelandet kunde inte skickas."
+        );
 
-        setTrainingComments((current) => ({
-          ...current,
-          [selectedSessionId]: [
-            ...(current[selectedSessionId] ?? []),
-            newComment,
-          ],
-        }));
+        return;
       }
+
+      const newComment = data as TrainingComment;
+
+      setTrainingComments((current) => ({
+        ...current,
+        [selectedSessionId]: [
+          ...(current[selectedSessionId] ?? []),
+          newComment,
+        ],
+      }));
 
       setCommentText("");
       setCommentMessage("Meddelandet är skickat ✓");
@@ -594,7 +582,9 @@ export default function AthleteHomeScreen() {
       );
 
       setCommentMessage(
-        "Något gick fel när meddelandet skulle skickas."
+        error instanceof Error
+          ? error.message
+          : "Något gick fel när meddelandet skulle skickas."
       );
     } finally {
       setSavingComment(false);
