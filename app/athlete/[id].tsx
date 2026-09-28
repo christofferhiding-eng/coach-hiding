@@ -83,6 +83,17 @@ type TrainingWeek = {
   sessions: AthleteTrainingSession[];
 };
 
+type TrainingComment = {
+  id: string;
+  training_session_id: string;
+  athlete_id: string;
+  author_id: string;
+  author_role: "athlete" | "coach";
+  message: string;
+  created_at: string;
+  read_at: string | null;
+};
+
 type AthleteProfile = {
   id: string;
   name: string;
@@ -145,6 +156,9 @@ export default function AthleteHomeScreen() {
 
   const [comments, setComments] =
     useState<Record<string, string>>({});
+
+  const [trainingComments, setTrainingComments] =
+    useState<Record<string, TrainingComment[]>>({});
 
   const [commentText, setCommentText] =
     useState("");
@@ -376,7 +390,7 @@ export default function AthleteHomeScreen() {
 
         if (commentError) {
           console.error(
-            "Kunde inte läsa kommentarer:",
+            "Kunde inte läsa äldre kommentarer:",
             commentError
           );
         } else {
@@ -400,6 +414,43 @@ export default function AthleteHomeScreen() {
           setComments(
             loadedComments
           );
+        }
+
+        /*
+         * 4b. Ladda den riktiga dialogen mellan adept och coach.
+         */
+
+        const {
+          data: trainingCommentData,
+          error: trainingCommentError,
+        } = await supabase
+          .from("training_comments")
+          .select(
+            "id, training_session_id, athlete_id, author_id, author_role, message, created_at, read_at"
+          )
+          .eq("athlete_id", id)
+          .order("created_at", { ascending: true });
+
+        if (trainingCommentError) {
+          console.error(
+            "Kunde inte läsa dialogen:",
+            trainingCommentError
+          );
+        } else {
+          const groupedComments:
+            Record<string, TrainingComment[]> = {};
+
+          for (const item of trainingCommentData ?? []) {
+            const comment = item as TrainingComment;
+
+            if (!groupedComments[comment.training_session_id]) {
+              groupedComments[comment.training_session_id] = [];
+            }
+
+            groupedComments[comment.training_session_id].push(comment);
+          }
+
+          setTrainingComments(groupedComments);
         }
 
         /*
@@ -469,18 +520,12 @@ export default function AthleteHomeScreen() {
       return;
     }
 
-    setCommentText(
-      comments[selectedSessionId] ?? ""
-    );
-
+    setCommentText("");
     setCommentMessage(null);
-  }, [
-    selectedSessionId,
-    comments,
-  ]);
+  }, [selectedSessionId]);
 
   async function handleSaveComment() {
-    if (!selectedSessionId) {
+    if (!selectedSessionId || !commentText.trim()) {
       return;
     }
 
@@ -489,60 +534,67 @@ export default function AthleteHomeScreen() {
       setCommentMessage(null);
 
       const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        setCommentMessage("Du måste vara inloggad för att skicka ett meddelande.");
+        return;
+      }
+
+      const {
         data,
         error,
       } = await supabase
-        .from("training_sessions")
-        .update({
-          athlete_comment:
-            commentText.trim() || null,
+        .from("training_comments")
+        .insert({
+          training_session_id: selectedSessionId,
+          athlete_id: id,
+          author_id: user.id,
+          author_role: "athlete",
+          message: commentText.trim(),
         })
-        .eq(
-          "id",
-          selectedSessionId
+        .select(
+          "id, training_session_id, athlete_id, author_id, author_role, message, created_at, read_at"
         )
-        .select();
+        .single();
 
       if (error) {
         console.error(
-          "Kunde inte spara kommentar:",
+          "Kunde inte skicka meddelande:",
           error
         );
 
         setCommentMessage(
-          `Kunde inte spara: ${error.message}`
+          `Kunde inte skicka: ${error.message}`
         );
 
         return;
       }
 
-      if (!data || data.length === 0) {
-        setCommentMessage(
-          "Kommentaren kunde inte sparas. Ingen databasrad uppdaterades."
-        );
+      if (data) {
+        const newComment = data as TrainingComment;
 
-        return;
-      }
-
-      setComments(
-        (current) => ({
+        setTrainingComments((current) => ({
           ...current,
-          [selectedSessionId]:
-            commentText.trim(),
-        })
-      );
+          [selectedSessionId]: [
+            ...(current[selectedSessionId] ?? []),
+            newComment,
+          ],
+        }));
+      }
 
-      setCommentMessage(
-        "Kommentaren är sparad ✓"
-      );
+      setCommentText("");
+      setCommentMessage("Meddelandet är skickat ✓");
     } catch (error) {
       console.error(
-        "Kunde inte spara kommentar:",
+        "Kunde inte skicka meddelande:",
         error
       );
 
       setCommentMessage(
-        "Något gick fel när kommentaren skulle sparas."
+        "Något gick fel när meddelandet skulle skickas."
       );
     } finally {
       setSavingComment(false);
@@ -1044,7 +1096,7 @@ export default function AthleteHomeScreen() {
               }
             >
               <SectionLabel>
-                DIN KOMMENTAR
+                DIALOG MED COACH
               </SectionLabel>
 
               <BodyText
@@ -1052,56 +1104,77 @@ export default function AthleteHomeScreen() {
                   styles.commentIntro
                 }
               >
-                Hur kändes passet? Skriv
-                en kommentar till din coach.
+                Skriv hur passet kändes eller ställ en fråga till din coach.
               </BodyText>
+
+              {(trainingComments[activeSelectedSession.id] ?? []).length > 0 ? (
+                <View style={styles.commentList}>
+                  {(trainingComments[activeSelectedSession.id] ?? []).map(
+                    (comment) => (
+                      <View
+                        key={comment.id}
+                        style={[
+                          styles.commentBubble,
+                          comment.author_role === "athlete"
+                            ? styles.athleteCommentBubble
+                            : styles.coachCommentBubble,
+                        ]}
+                      >
+                        <View style={styles.commentBubbleHeader}>
+                          <BodyText style={styles.commentAuthor}>
+                            {comment.author_role === "athlete"
+                              ? "Du"
+                              : "Coach"}
+                          </BodyText>
+
+                          <BodyText style={styles.commentDate}>
+                            {formatCommentDate(comment.created_at)}
+                          </BodyText>
+                        </View>
+
+                        <BodyText style={styles.commentBubbleText}>
+                          {comment.message}
+                        </BodyText>
+                      </View>
+                    )
+                  )}
+                </View>
+              ) : (
+                <BodyText style={styles.noCommentsText}>
+                  Ingen meddelanden ännu. Starta dialogen här.
+                </BodyText>
+              )}
 
               <TextInput
                 value={commentText}
-                onChangeText={
-                  setCommentText
-                }
-                placeholder="Skriv din kommentar här..."
+                onChangeText={setCommentText}
+                placeholder="Skriv ett meddelande..."
                 placeholderTextColor="#666"
                 multiline
                 textAlignVertical="top"
-                style={
-                  styles.commentInput
-                }
+                style={styles.commentInput}
               />
 
               <Pressable
-                onPress={
-                  handleSaveComment
-                }
-                disabled={
-                  savingComment
-                }
+                onPress={handleSaveComment}
+                disabled={savingComment || !commentText.trim()}
                 style={[
                   styles.saveCommentButton,
-                  savingComment &&
+                  (savingComment || !commentText.trim()) &&
                     styles.saveCommentButtonDisabled,
                 ]}
               >
                 {savingComment ? (
                   <ActivityIndicator />
                 ) : (
-                  <BodyText
-                    style={
-                      styles.saveCommentText
-                    }
-                  >
-                    Spara kommentar
+                  <BodyText style={styles.saveCommentText}>
+                    Skicka meddelande
                   </BodyText>
                 )}
               </Pressable>
 
               {commentMessage && (
-                <BodyText
-                  style={
-                    styles.commentMessage
-                  }
-                >
+                <BodyText style={styles.commentMessage}>
                   {commentMessage}
                 </BodyText>
               )}
@@ -1743,6 +1816,15 @@ function formatLongDate(
   );
 }
 
+function formatCommentDate(value: string) {
+  return new Date(value).toLocaleString("sv-SE", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function formatWeekRange(
   startDate: string
 ) {
@@ -2160,6 +2242,59 @@ const styles =
 
     commentIntro: {
       marginTop: 7,
+      fontSize: 14,
+      lineHeight: 20,
+      opacity: 0.6,
+    },
+
+    commentList: {
+      marginTop: 14,
+      gap: 10,
+    },
+
+    commentBubble: {
+      padding: 12,
+      borderRadius: 12,
+      borderWidth: 1,
+    },
+
+    athleteCommentBubble: {
+      backgroundColor: "#EAF7EE",
+      borderColor: "#B9DFC5",
+    },
+
+    coachCommentBubble: {
+      backgroundColor: "#EAF2FF",
+      borderColor: "#BDD1F0",
+    },
+
+    commentBubbleHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      gap: 8,
+    },
+
+    commentAuthor: {
+      fontSize: 12,
+      fontWeight: "700",
+      color: "#374151",
+    },
+
+    commentDate: {
+      fontSize: 11,
+      color: "#6B7280",
+    },
+
+    commentBubbleText: {
+      marginTop: 6,
+      fontSize: 14,
+      lineHeight: 20,
+      color: "#111827",
+    },
+
+    noCommentsText: {
+      marginTop: 14,
       fontSize: 14,
       lineHeight: 20,
       opacity: 0.6,

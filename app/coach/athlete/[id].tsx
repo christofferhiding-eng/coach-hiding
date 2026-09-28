@@ -588,35 +588,71 @@ export default function CoachAthleteScreen() {
       return;
     }
 
+    const sessionId = editingSession.id;
+
     try {
       setSaving(true);
       setError(null);
 
       const {
-        error,
-      } = await supabase
-        .from("training_sessions")
-        .delete()
-        .eq(
-          "id",
-          editingSession.id
-        );
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
 
-      if (error) {
-        throw error;
+      if (userError) {
+        throw new Error(
+          `Kunde inte verifiera inloggningen: ${userError.message}`
+        );
       }
 
-      await loadSessions();
+      if (!user) {
+        throw new Error(
+          "Ingen inloggad användare hittades. Logga in igen."
+        );
+      }
+
+      const { data, error: deleteError } =
+        await supabase.rpc(
+          "delete_training_session",
+          {
+            p_session_id: sessionId,
+          }
+        );
+
+      if (deleteError) {
+        console.error(
+          "Kunde inte ta bort träningspasset via RPC:",
+          deleteError
+        );
+
+        throw new Error(
+          `Kunde inte ta bort passet: ${deleteError.message}`
+        );
+      }
+
+      if (data !== true) {
+        throw new Error(
+          "Raderingen bekräftades inte av databasen."
+        );
+      }
+
+      setSessions((currentSessions) =>
+        currentSessions.filter(
+          (session) => session.id !== sessionId
+        )
+      );
 
       closePanel();
-    } catch (error) {
+    } catch (deleteError) {
       console.error(
         "Kunde inte ta bort träningspasset:",
-        error
+        deleteError
       );
 
       setError(
-        "Kunde inte ta bort träningspasset."
+        deleteError instanceof Error
+          ? deleteError.message
+          : "Kunde inte ta bort träningspasset."
       );
     } finally {
       setSaving(false);
