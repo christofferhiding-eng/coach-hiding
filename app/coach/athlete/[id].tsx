@@ -592,15 +592,12 @@ export default function CoachAthleteScreen() {
       setSaving(true);
       setError(null);
 
-      const {
-        error,
-      } = await supabase
-        .from("training_sessions")
-        .delete()
-        .eq(
-          "id",
-          editingSession.id
-        );
+      const { error } = await supabase.rpc(
+        "delete_training_session",
+        {
+          p_session_id: editingSession.id,
+        }
+      );
 
       if (error) {
         throw error;
@@ -616,7 +613,9 @@ export default function CoachAthleteScreen() {
       );
 
       setError(
-        "Kunde inte ta bort träningspasset."
+        error instanceof Error
+          ? error.message
+          : "Kunde inte ta bort träningspasset."
       );
     } finally {
       setSaving(false);
@@ -2345,8 +2344,8 @@ const styles =
       paddingVertical: 8,
       borderRadius: 9,
       borderWidth: 1,
-      borderColor: "rgba(30, 41, 59, 0.22)",
-      backgroundColor: "rgba(255,255,255,0.82)",
+      borderColor: "#CBD5E1",
+      backgroundColor: "#FFFFFF",
     },
 
     desktopSlot: {
