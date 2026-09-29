@@ -163,6 +163,9 @@ export default function CoachAthleteScreen() {
   const [saving, setSaving] =
     useState(false);
 
+  const [completedSessions, setCompletedSessions] =
+    useState<Record<string, boolean>>({});
+
   const [error, setError] =
     useState<string | null>(null);
 
@@ -189,6 +192,7 @@ export default function CoachAthleteScreen() {
     loadAthlete();
     loadSessions();
     loadCycles();
+    loadCompletedSessions();
   }, [id]);
 
   async function loadAthlete() {
@@ -375,6 +379,41 @@ export default function CoachAthleteScreen() {
       setError("Kunde inte ta bort träningsperioden.");
     } finally {
       setSavingCycle(false);
+    }
+  }
+
+  async function loadCompletedSessions() {
+    if (!id) {
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase.rpc(
+        "get_coach_training_completion"
+      );
+
+      if (error) {
+        throw error;
+      }
+
+      const completionMap: Record<string, boolean> = {};
+
+      for (const completion of data ?? []) {
+        if (
+          completion.athlete_id === id
+        ) {
+          completionMap[
+            completion.training_session_id
+          ] = true;
+        }
+      }
+
+      setCompletedSessions(completionMap);
+    } catch (completionError) {
+      console.error(
+        "Kunde inte läsa genomförda pass:",
+        completionError
+      );
     }
   }
 
@@ -1074,6 +1113,9 @@ export default function CoachAthleteScreen() {
                     onEditSession={
                       handleEditSession
                     }
+                    completedSessions={
+                      completedSessions
+                    }
                   />
                 ))
               ) : (
@@ -1082,6 +1124,9 @@ export default function CoachAthleteScreen() {
                   sessions={sessions}
                   onAddSession={handleAddSession}
                   onEditSession={handleEditSession}
+                  completedSessions={
+                    completedSessions
+                  }
                 />
               )}
             </View>
@@ -1338,11 +1383,13 @@ function MonthCalendar({
   sessions,
   onAddSession,
   onEditSession,
+  completedSessions,
 }: {
   monthStart: string;
   sessions: TrainingSession[];
   onAddSession: (date: string) => void;
   onEditSession: (session: TrainingSession) => void;
+  completedSessions: Record<string, boolean>;
 }) {
   const days = createMonthDays(monthStart, sessions);
 
@@ -1379,12 +1426,22 @@ function MonthCalendar({
                 onPress={() => onEditSession(session)}
                 style={styles.monthSession}
               >
-                <BodyText
-                  style={styles.monthSessionText}
-                  numberOfLines={1}
-                >
-                  {TYPE_ICONS[session.type]} {session.title}
-                </BodyText>
+                <View style={styles.monthSessionRow}>
+                  <BodyText
+                    style={styles.monthSessionText}
+                    numberOfLines={1}
+                  >
+                    {TYPE_ICONS[session.type]} {session.title}
+                  </BodyText>
+
+                  {completedSessions[session.id] && (
+                    <BodyText
+                      style={styles.monthCompletedMark}
+                    >
+                      ✓
+                    </BodyText>
+                  )}
+                </View>
               </Pressable>
             ))}
 
@@ -1404,6 +1461,7 @@ function DayRow({
   day,
   onAddSession,
   onEditSession,
+  completedSessions,
 }: {
   day: {
     date: string;
@@ -1416,6 +1474,8 @@ function DayRow({
   onEditSession: (
     session: TrainingSession
   ) => void;
+
+  completedSessions: Record<string, boolean>;
 }) {
   return (
     <View
@@ -1492,19 +1552,37 @@ function DayRow({
                   }
                 </BodyText>
 
-                <BodyText
-                  style={
-                    styles.desktopTitle
-                  }
-                  numberOfLines={1}
-                >
-                  {
-                    TYPE_ICONS[
-                      session.type
-                    ]
-                  }{" "}
-                  {session.title}
-                </BodyText>
+                <View style={styles.desktopTitleRow}>
+                  <BodyText
+                    style={
+                      styles.desktopTitle
+                    }
+                    numberOfLines={1}
+                  >
+                    {
+                      TYPE_ICONS[
+                        session.type
+                      ]
+                    }{" "}
+                    {session.title}
+                  </BodyText>
+
+                  {completedSessions[session.id] && (
+                    <View
+                      style={
+                        styles.completedBadge
+                      }
+                    >
+                      <BodyText
+                        style={
+                          styles.completedBadgeText
+                        }
+                      >
+                        ✓
+                      </BodyText>
+                    </View>
+                  )}
+                </View>
 
                 {session.description ? (
                   <BodyText
@@ -2220,9 +2298,22 @@ const styles =
       backgroundColor: "rgba(42, 139, 86, 0.10)",
     },
 
+    monthSessionRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 3,
+    },
+
     monthSessionText: {
+      flex: 1,
       fontSize: 10,
       fontWeight: "600",
+    },
+
+    monthCompletedMark: {
+      color: "#166534",
+      fontSize: 11,
+      fontWeight: "800",
     },
 
     monthMoreText: {
@@ -2358,6 +2449,30 @@ const styles =
       marginTop: 2,
       fontSize: 13,
       fontWeight: "700",
+      flex: 1,
+    },
+
+    desktopTitleRow: {
+      marginTop: 2,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+    },
+
+    completedBadge: {
+      width: 20,
+      height: 20,
+      borderRadius: 10,
+      backgroundColor: "#8EE3B0",
+      alignItems: "center",
+      justifyContent: "center",
+      flexShrink: 0,
+    },
+
+    completedBadgeText: {
+      color: "#14532D",
+      fontSize: 13,
+      fontWeight: "800",
     },
 
     desktopDescription: {
