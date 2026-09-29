@@ -2343,10 +2343,10 @@ const styles =
       maxWidth: 260,
       paddingHorizontal: 10,
       paddingVertical: 8,
-      borderRadius: 8,
+      borderRadius: 9,
       borderWidth: 1,
-      borderColor: "rgba(30, 41, 59, 0.18)",
-      backgroundColor: "rgba(255,255,255,0.8)",
+      borderColor: "rgba(30, 41, 59, 0.22)",
+      backgroundColor: "rgba(255,255,255,0.82)",
     },
 
     desktopSlot: {
