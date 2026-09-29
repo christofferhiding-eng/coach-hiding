@@ -588,71 +588,35 @@ export default function CoachAthleteScreen() {
       return;
     }
 
-    const sessionId = editingSession.id;
-
     try {
       setSaving(true);
       setError(null);
 
       const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-
-      if (userError) {
-        throw new Error(
-          `Kunde inte verifiera inloggningen: ${userError.message}`
+        error,
+      } = await supabase
+        .from("training_sessions")
+        .delete()
+        .eq(
+          "id",
+          editingSession.id
         );
+
+      if (error) {
+        throw error;
       }
 
-      if (!user) {
-        throw new Error(
-          "Ingen inloggad användare hittades. Logga in igen."
-        );
-      }
-
-      const { data, error: deleteError } =
-        await supabase.rpc(
-          "delete_training_session",
-          {
-            p_session_id: sessionId,
-          }
-        );
-
-      if (deleteError) {
-        console.error(
-          "Kunde inte ta bort träningspasset via RPC:",
-          deleteError
-        );
-
-        throw new Error(
-          `Kunde inte ta bort passet: ${deleteError.message}`
-        );
-      }
-
-      if (data !== true) {
-        throw new Error(
-          "Raderingen bekräftades inte av databasen."
-        );
-      }
-
-      setSessions((currentSessions) =>
-        currentSessions.filter(
-          (session) => session.id !== sessionId
-        )
-      );
+      await loadSessions();
 
       closePanel();
-    } catch (deleteError) {
+    } catch (error) {
       console.error(
         "Kunde inte ta bort träningspasset:",
-        deleteError
+        error
       );
 
       setError(
-        deleteError instanceof Error
-          ? deleteError.message
-          : "Kunde inte ta bort träningspasset."
+        "Kunde inte ta bort träningspasset."
       );
     } finally {
       setSaving(false);
@@ -2380,8 +2344,9 @@ const styles =
       paddingHorizontal: 10,
       paddingVertical: 8,
       borderRadius: 8,
-      backgroundColor:
-        "rgba(255,255,255,0.055)",
+      borderWidth: 1,
+      borderColor: "rgba(30, 41, 59, 0.18)",
+      backgroundColor: "rgba(255,255,255,0.8)",
     },
 
     desktopSlot: {

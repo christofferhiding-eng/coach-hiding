@@ -124,6 +124,29 @@ const CYCLE_TYPE_LABELS: Record<TrainingCycleType, string> = {
   "tävlingsperiod": "Tävlingsperiod",
 };
 
+const BORG_VALUES = Array.from(
+  { length: 15 },
+  (_, index) => index + 6
+);
+
+const BORG_LABELS: Record<number, string> = {
+  6: "Ingen ansträngning",
+  7: "Extremt lätt",
+  8: "Mycket lätt",
+  9: "Mycket lätt",
+  10: "Lätt",
+  11: "Lätt",
+  12: "Något ansträngande",
+  13: "Något ansträngande",
+  14: "Något ansträngande",
+  15: "Ansträngande",
+  16: "Ansträngande",
+  17: "Mycket ansträngande",
+  18: "Mycket ansträngande",
+  19: "Extremt ansträngande",
+  20: "Maximalt",
+};
+
 export default function AthleteHomeScreen() {
   const { id } =
     useLocalSearchParams<{ id: string }>();
@@ -159,6 +182,27 @@ export default function AthleteHomeScreen() {
 
   const [trainingComments, setTrainingComments] =
     useState<Record<string, TrainingComment[]>>({});
+
+  const [sessionRpe, setSessionRpe] =
+    useState<Record<string, number>>({});
+
+  const [completedSessions, setCompletedSessions] =
+    useState<Record<string, boolean>>({});
+
+  const [savingCompletion, setSavingCompletion] =
+    useState(false);
+
+  const [completionMessage, setCompletionMessage] =
+    useState<string | null>(null);
+
+  const [selectedRpe, setSelectedRpe] =
+    useState<number | null>(null);
+
+  const [savingRpe, setSavingRpe] =
+    useState(false);
+
+  const [rpeMessage, setRpeMessage] =
+    useState<string | null>(null);
 
   const [commentText, setCommentText] =
     useState("");
@@ -454,6 +498,54 @@ export default function AthleteHomeScreen() {
         }
 
         /*
+         * 4c. Ladda Borg-skattningar.
+         */
+        const {
+          data: rawRpeData,
+          error: rpeError,
+        } = await supabase.rpc(
+          "get_athlete_training_rpe",
+          {
+            p_athlete_id: id,
+          }
+        );
+
+        if (rpeError) {
+          console.error(
+            "Kunde inte läsa Borg-skattningar:",
+            rpeError
+          );
+        } else {
+          setSessionRpe(
+            (rawRpeData ?? {}) as Record<string, number>
+          );
+        }
+
+        /*
+         * 4d. Ladda genomförda pass.
+         */
+        const {
+          data: rawCompletionData,
+          error: completionError,
+        } = await supabase.rpc(
+          "get_athlete_training_completion",
+          {
+            p_athlete_id: id,
+          }
+        );
+
+        if (completionError) {
+          console.error(
+            "Kunde inte läsa genomförda pass:",
+            completionError
+          );
+        } else {
+          setCompletedSessions(
+            (rawCompletionData ?? {}) as Record<string, boolean>
+          );
+        }
+
+        /*
          * 5. Välj aktuell vecka.
          */
 
@@ -517,12 +609,145 @@ export default function AthleteHomeScreen() {
     if (!selectedSessionId) {
       setCommentText("");
       setCommentMessage(null);
+      setSelectedRpe(null);
+      setRpeMessage(null);
+      setCompletionMessage(null);
       return;
     }
 
     setCommentText("");
     setCommentMessage(null);
-  }, [selectedSessionId]);
+    setCompletionMessage(null);
+    setSelectedRpe(
+      sessionRpe[selectedSessionId] ?? null
+    );
+    setRpeMessage(null);
+  }, [
+    selectedSessionId,
+    sessionRpe,
+  ]);
+
+  async function handleToggleCompletion() {
+    if (!selectedSessionId) {
+      return;
+    }
+
+    const nextCompleted =
+      !Boolean(completedSessions[selectedSessionId]);
+
+    try {
+      setSavingCompletion(true);
+      setCompletionMessage(null);
+
+      const { error } = await supabase.rpc(
+        "set_athlete_training_completion",
+        {
+          p_training_session_id: selectedSessionId,
+          p_athlete_id: id,
+          p_completed: nextCompleted,
+        }
+      );
+
+      if (error) {
+        console.error(
+          "Kunde inte spara genomförd-status:",
+          error
+        );
+
+        setCompletionMessage(
+          `Kunde inte spara: ${error.message}`
+        );
+
+        return;
+      }
+
+      setCompletedSessions((current) => {
+        const next = {
+          ...current,
+        };
+
+        if (nextCompleted) {
+          next[selectedSessionId] = true;
+        } else {
+          delete next[selectedSessionId];
+        }
+
+        return next;
+      });
+
+      setCompletionMessage(
+        nextCompleted
+          ? "Passet är markerat som genomfört ✓"
+          : "Markeringen är borttagen."
+      );
+    } catch (error) {
+      console.error(
+        "Kunde inte spara genomförd-status:",
+        error
+      );
+
+      setCompletionMessage(
+        error instanceof Error
+          ? error.message
+          : "Något gick fel när passet skulle markeras."
+      );
+    } finally {
+      setSavingCompletion(false);
+    }
+  }
+
+  async function handleSaveRpe() {
+    if (!selectedSessionId || selectedRpe === null) {
+      return;
+    }
+
+    try {
+      setSavingRpe(true);
+      setRpeMessage(null);
+
+      const { error } = await supabase.rpc(
+        "save_athlete_training_rpe",
+        {
+          p_training_session_id: selectedSessionId,
+          p_athlete_id: id,
+          p_rpe: selectedRpe,
+        }
+      );
+
+      if (error) {
+        console.error(
+          "Kunde inte spara Borg-skattning:",
+          error
+        );
+
+        setRpeMessage(
+          `Kunde inte spara: ${error.message}`
+        );
+
+        return;
+      }
+
+      setSessionRpe((current) => ({
+        ...current,
+        [selectedSessionId]: selectedRpe,
+      }));
+
+      setRpeMessage("Skattningen är sparad ✓");
+    } catch (error) {
+      console.error(
+        "Kunde inte spara Borg-skattning:",
+        error
+      );
+
+      setRpeMessage(
+        error instanceof Error
+          ? error.message
+          : "Något gick fel när skattningen skulle sparas."
+      );
+    } finally {
+      setSavingRpe(false);
+    }
+  }
 
   async function handleSaveComment() {
     if (!selectedSessionId || !commentText.trim()) {
@@ -713,6 +938,29 @@ export default function AthleteHomeScreen() {
     (trainingWeek) => trainingWeek.sessions
   );
 
+  const plannedSessions = allSessions.filter(
+    (session) => session.type !== "rest"
+  );
+
+  const completedCount = plannedSessions.filter(
+    (session) => Boolean(completedSessions[session.id])
+  ).length;
+
+  const completionPercent =
+    plannedSessions.length > 0
+      ? Math.round(
+          (completedCount / plannedSessions.length) * 100
+        )
+      : 0;
+
+  const currentWeekPlanned = week.sessions.filter(
+    (session) => session.type !== "rest"
+  );
+
+  const currentWeekCompleted = currentWeekPlanned.filter(
+    (session) => Boolean(completedSessions[session.id])
+  ).length;
+
   const monthDays = createMonthDays(
     monthStart,
     allSessions
@@ -818,6 +1066,45 @@ export default function AthleteHomeScreen() {
             </BodyText>
           </Card>
         )}
+
+        <Card>
+          <SectionLabel>
+            TRÄNINGSSTATISTIK
+          </SectionLabel>
+
+          <View style={styles.completionStatsRow}>
+            <View style={styles.completionStat}>
+              <BodyText style={styles.completionStatValue}>
+                {completedCount}
+              </BodyText>
+              <BodyText style={styles.completionStatLabel}>
+                genomförda
+              </BodyText>
+            </View>
+
+            <View style={styles.completionStat}>
+              <BodyText style={styles.completionStatValue}>
+                {plannedSessions.length}
+              </BodyText>
+              <BodyText style={styles.completionStatLabel}>
+                planerade
+              </BodyText>
+            </View>
+
+            <View style={styles.completionStat}>
+              <BodyText style={styles.completionStatValue}>
+                {completionPercent}%
+              </BodyText>
+              <BodyText style={styles.completionStatLabel}>
+                genomförandegrad
+              </BodyText>
+            </View>
+          </View>
+
+          <BodyText style={styles.completionWeekText}>
+            {week.title}: {currentWeekCompleted} av {currentWeekPlanned.length} pass genomförda
+          </BodyText>
+        </Card>
 
         <View style={styles.viewToggle}>
           <Pressable
@@ -989,6 +1276,7 @@ export default function AthleteHomeScreen() {
                 day={day}
                 selectedSessionId={selectedSessionId}
                 onSelectSession={setSelectedSessionId}
+                completedSessions={completedSessions}
               />
             ))}
           </View>
@@ -997,6 +1285,7 @@ export default function AthleteHomeScreen() {
             days={monthDays}
             selectedSessionId={selectedSessionId}
             onSelectSession={setSelectedSessionId}
+            completedSessions={completedSessions}
             isDesktop={isDesktop}
           />
         )}
@@ -1079,6 +1368,143 @@ export default function AthleteHomeScreen() {
                 activeSelectedSession.description
               }
             </BodyText>
+
+            <View
+              style={
+                styles.completionSection
+              }
+            >
+              <Pressable
+                onPress={handleToggleCompletion}
+                disabled={savingCompletion}
+                style={styles.completionButton}
+              >
+                <View
+                  style={[
+                    styles.completionCheckbox,
+                    completedSessions[activeSelectedSession.id] &&
+                      styles.completionCheckboxDone,
+                  ]}
+                >
+                  {completedSessions[activeSelectedSession.id] && (
+                    <BodyText style={styles.completionCheck}>
+                      ✓
+                    </BodyText>
+                  )}
+                </View>
+
+                <View style={styles.completionButtonText}>
+                  <BodyText style={styles.completionTitle}>
+                    {completedSessions[activeSelectedSession.id]
+                      ? "Passet är genomfört"
+                      : "Markera passet som genomfört"}
+                  </BodyText>
+
+                  <BodyText style={styles.completionSubtitle}>
+                    {savingCompletion
+                      ? "Sparar..."
+                      : "Bocka av när du är klar."}
+                  </BodyText>
+                </View>
+              </Pressable>
+
+              {completionMessage && (
+                <BodyText style={styles.completionMessage}>
+                  {completionMessage}
+                </BodyText>
+              )}
+            </View>
+
+            <View
+              style={
+                styles.rpeSection
+              }
+            >
+              <SectionLabel>
+                HUR ANSTRÄNGANDE VAR PASSET?
+              </SectionLabel>
+
+              <BodyText
+                style={
+                  styles.rpeIntro
+                }
+              >
+                Skatta passets totala ansträngning enligt Borg 6–20.
+              </BodyText>
+
+              <View
+                style={
+                  styles.rpeScale
+                }
+              >
+                {BORG_VALUES.map((value) => (
+                  <Pressable
+                    key={value}
+                    onPress={() => {
+                      setSelectedRpe(value);
+                      setRpeMessage(null);
+                    }}
+                    style={[
+                      styles.rpeButton,
+                      selectedRpe === value &&
+                        styles.rpeButtonSelected,
+                    ]}
+                  >
+                    <BodyText
+                      style={[
+                        styles.rpeButtonText,
+                        selectedRpe === value &&
+                          styles.rpeButtonTextSelected,
+                      ]}
+                    >
+                      {value}
+                    </BodyText>
+                  </Pressable>
+                ))}
+              </View>
+
+              {selectedRpe !== null && (
+                <BodyText
+                  style={
+                    styles.rpeSelectedLabel
+                  }
+                >
+                  {selectedRpe} – {BORG_LABELS[selectedRpe]}
+                </BodyText>
+              )}
+
+              <Pressable
+                onPress={handleSaveRpe}
+                disabled={
+                  savingRpe || selectedRpe === null
+                }
+                style={[
+                  styles.saveRpeButton,
+                  (savingRpe || selectedRpe === null) &&
+                    styles.saveRpeButtonDisabled,
+                ]}
+              >
+                <BodyText
+                  style={
+                    styles.saveRpeText
+                  }
+                >
+                  {savingRpe
+                    ? "Sparar..."
+                    : "Spara skattning"}
+                </BodyText>
+              </Pressable>
+
+              {rpeMessage && (
+                <BodyText
+                  style={
+                    styles.rpeMessage
+                  }
+                >
+                  {rpeMessage}
+                </BodyText>
+              )}
+            </View>
 
             <View
               style={
@@ -1180,6 +1606,7 @@ function DayCard({
   day,
   selectedSessionId,
   onSelectSession,
+  completedSessions,
 }: {
   day: {
     date: string;
@@ -1192,6 +1619,8 @@ function DayCard({
   onSelectSession: (
     sessionId: string | null
   ) => void;
+
+  completedSessions: Record<string, boolean>;
 }) {
   const hasSessions =
     day.sessions.length > 0;
@@ -1301,17 +1730,27 @@ function DayCard({
                     }
                   </BodyText>
 
-                  <BodyText
-                    style={
-                      styles.sessionType
-                    }
-                  >
-                    {
-                      TYPE_ICONS[
-                        session.type
-                      ]
-                    }
-                  </BodyText>
+                  <View style={styles.sessionTopRight}>
+                    <BodyText
+                      style={
+                        styles.sessionType
+                      }
+                    >
+                      {
+                        TYPE_ICONS[
+                          session.type
+                        ]
+                      }
+                    </BodyText>
+
+                    {completedSessions[session.id] && (
+                      <View style={styles.completedBadge}>
+                        <BodyText style={styles.completedBadgeText}>
+                          ✓
+                        </BodyText>
+                      </View>
+                    )}
+                  </View>
                 </View>
 
                 <BodyText
@@ -1405,6 +1844,7 @@ function MonthCalendar({
   days,
   selectedSessionId,
   onSelectSession,
+  completedSessions,
   isDesktop,
 }: {
   days: Array<{
@@ -1415,6 +1855,7 @@ function MonthCalendar({
   }>;
   selectedSessionId: string | null;
   onSelectSession: (sessionId: string | null) => void;
+  completedSessions: Record<string, boolean>;
   isDesktop: boolean;
 }) {
   return (
@@ -1446,12 +1887,20 @@ function MonthCalendar({
                   selected && styles.sessionSelected,
                 ]}
               >
-                <BodyText
-                  numberOfLines={2}
-                  style={styles.monthSessionText}
-                >
-                  {TYPE_ICONS[session.type]} {session.title}
-                </BodyText>
+                <View style={styles.monthSessionRow}>
+                  <BodyText
+                    numberOfLines={2}
+                    style={styles.monthSessionText}
+                  >
+                    {TYPE_ICONS[session.type]} {session.title}
+                  </BodyText>
+
+                  {completedSessions[session.id] && (
+                    <BodyText style={styles.monthCompletedMark}>
+                      ✓
+                    </BodyText>
+                  )}
+                </View>
               </Pressable>
             );
           })}
@@ -1926,6 +2375,39 @@ const styles =
       color: "#536174",
     },
 
+    completionStatsRow: {
+      marginTop: 12,
+      flexDirection: "row",
+      gap: 10,
+    },
+
+    completionStat: {
+      flex: 1,
+      padding: 12,
+      borderRadius: 10,
+      backgroundColor: "#F0F8F3",
+      borderWidth: 1,
+      borderColor: "#C7E5D1",
+    },
+
+    completionStatValue: {
+      fontSize: 22,
+      fontWeight: "700",
+      color: "#172033",
+    },
+
+    completionStatLabel: {
+      marginTop: 2,
+      fontSize: 11,
+      color: "#536174",
+    },
+
+    completionWeekText: {
+      marginTop: 10,
+      fontSize: 12,
+      color: "#536174",
+    },
+
     viewToggle: {
       flexDirection: "row",
       alignSelf: "center",
@@ -2106,6 +2588,27 @@ const styles =
       alignItems: "center",
     },
 
+    sessionTopRight: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+    },
+
+    completedBadge: {
+      width: 22,
+      height: 22,
+      borderRadius: 11,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: "#8EE3B0",
+    },
+
+    completedBadgeText: {
+      color: "#14532D",
+      fontSize: 13,
+      fontWeight: "800",
+    },
+
     sessionSlot: {
       fontSize: 12,
       fontWeight: "600",
@@ -2179,11 +2682,24 @@ const styles =
       borderWidth: 1,
     },
 
+    monthSessionRow: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: 3,
+    },
+
     monthSessionText: {
+      flex: 1,
       fontSize: 10,
       lineHeight: 13,
       color: "#111827",
       fontWeight: "600",
+    },
+
+    monthCompletedMark: {
+      fontSize: 11,
+      fontWeight: "800",
+      color: "#166534",
     },
 
     monthMoreText: {
@@ -2220,6 +2736,152 @@ const styles =
       fontSize: 15,
       lineHeight: 23,
       opacity: 0.8,
+    },
+
+    completionSection: {
+      marginTop: 24,
+      paddingTop: 20,
+      borderTopWidth: 1,
+      borderTopColor:
+        "rgba(255,255,255,0.1)",
+    },
+
+    completionButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      padding: 14,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: "#C7E5D1",
+      backgroundColor: "#F0F8F3",
+    },
+
+    completionCheckbox: {
+      width: 28,
+      height: 28,
+      borderRadius: 7,
+      borderWidth: 2,
+      borderColor: "#6B7280",
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: "#FFFFFF",
+    },
+
+    completionCheckboxDone: {
+      borderColor: "#4FA875",
+      backgroundColor: "#8EE3B0",
+    },
+
+    completionCheck: {
+      color: "#14532D",
+      fontSize: 18,
+      lineHeight: 20,
+      fontWeight: "800",
+    },
+
+    completionButtonText: {
+      marginLeft: 12,
+      flex: 1,
+    },
+
+    completionTitle: {
+      fontSize: 14,
+      fontWeight: "700",
+      color: "#172033",
+    },
+
+    completionSubtitle: {
+      marginTop: 3,
+      fontSize: 12,
+      color: "#536174",
+    },
+
+    completionMessage: {
+      marginTop: 8,
+      fontSize: 13,
+      color: "#4B5563",
+    },
+
+    rpeSection: {
+      marginTop: 28,
+      paddingTop: 22,
+      borderTopWidth: 1,
+      borderTopColor:
+        "rgba(255,255,255,0.1)",
+    },
+
+    rpeIntro: {
+      marginTop: 7,
+      fontSize: 14,
+      lineHeight: 20,
+      opacity: 0.6,
+    },
+
+    rpeScale: {
+      marginTop: 14,
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+      maxWidth: 560,
+    },
+
+    rpeButton: {
+      width: 38,
+      height: 38,
+      borderRadius: 9,
+      borderWidth: 1,
+      borderColor:
+        "rgba(30,41,59,0.16)",
+      backgroundColor:
+        "rgba(255,255,255,0.7)",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+
+    rpeButtonSelected: {
+      backgroundColor: "#8EE3B0",
+      borderColor: "#4FA875",
+    },
+
+    rpeButtonText: {
+      fontSize: 14,
+      fontWeight: "700",
+      color: "#374151",
+    },
+
+    rpeButtonTextSelected: {
+      color: "#111827",
+    },
+
+    rpeSelectedLabel: {
+      marginTop: 10,
+      fontSize: 14,
+      fontWeight: "600",
+      color: "#374151",
+    },
+
+    saveRpeButton: {
+      alignSelf: "flex-start",
+      marginTop: 12,
+      paddingHorizontal: 16,
+      paddingVertical: 11,
+      borderRadius: 9,
+      backgroundColor: "#8EE3B0",
+    },
+
+    saveRpeButtonDisabled: {
+      opacity: 0.5,
+    },
+
+    saveRpeText: {
+      color: "#111",
+      fontWeight: "700",
+    },
+
+    rpeMessage: {
+      marginTop: 8,
+      fontSize: 13,
+      color: "#4B5563",
     },
 
     commentSection: {
