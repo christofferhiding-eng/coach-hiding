@@ -414,10 +414,7 @@ export default function CoachAthleteScreen() {
 
     try {
       const { data, error } = await supabase.rpc(
-        "get_athlete_training_comments",
-        {
-          p_athlete_id: id,
-        }
+        "get_coach_training_comments"
       );
 
       if (error) {

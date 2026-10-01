@@ -38,6 +38,7 @@ const Screen = forwardRef<
         <ScrollView
           ref={ref}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
           contentContainerStyle={[
             styles.content,
             contentContainerStyle,

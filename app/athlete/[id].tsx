@@ -2918,8 +2918,8 @@ const styles =
     },
 
     rpeButton: {
-      width: 38,
-      height: 38,
+      width: 44,
+      height: 44,
       borderRadius: 9,
       borderWidth: 1,
       borderColor:
