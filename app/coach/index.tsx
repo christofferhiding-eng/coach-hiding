@@ -57,12 +57,18 @@ export default function CoachHomeScreen() {
   const [comments, setComments] = useState<CommentWithContext[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingComments, setLoadingComments] = useState(true);
-  const [replyingTo, setReplyingTo] = useState<CommentWithContext | null>(null);
+
+  const [replyingTo, setReplyingTo] =
+    useState<CommentWithContext | null>(null);
+
   const [replyText, setReplyText] = useState("");
   const [sendingReply, setSendingReply] = useState(false);
-  const [commentMessage, setCommentMessage] = useState<string | null>(null);
+  const [commentMessage, setCommentMessage] =
+    useState<string | null>(null);
+
   const [importing, setImporting] = useState(false);
-  const [importMessage, setImportMessage] = useState<string | null>(null);
+  const [importMessage, setImportMessage] =
+    useState<string | null>(null);
 
   useEffect(() => {
     loadAthletes();
@@ -85,7 +91,9 @@ export default function CoachHomeScreen() {
         return;
       }
 
-      const today = new Date().toISOString().split("T")[0];
+      const today = new Date()
+        .toISOString()
+        .split("T")[0];
 
       const {
         data: sessions,
@@ -97,19 +105,26 @@ export default function CoachHomeScreen() {
         .order("date", { ascending: true });
 
       if (sessionError) {
-        console.error("Kunde inte läsa träningspass:", sessionError);
+        console.error(
+          "Kunde inte läsa träningspass:",
+          sessionError
+        );
       }
 
-      const trainingSessions = (sessions ?? []) as TrainingSession[];
+      const trainingSessions =
+        (sessions ?? []) as TrainingSession[];
 
       const mappedAthletes: CoachAthlete[] = (profiles ?? [])
         .filter((profile) => profile.athlete_id)
         .map((profile) => {
-          const athleteId = profile.athlete_id as string;
+          const athleteId =
+            profile.athlete_id as string;
 
-          const nextSession = trainingSessions.find(
-            (session) => session.athlete_id === athleteId
-          );
+          const nextSession =
+            trainingSessions.find(
+              (session) =>
+                session.athlete_id === athleteId
+            );
 
           return {
             id: athleteId,
@@ -125,7 +140,10 @@ export default function CoachHomeScreen() {
 
       setAthletes(mappedAthletes);
     } catch (error) {
-      console.error("Kunde inte läsa adepter:", error);
+      console.error(
+        "Kunde inte läsa adepter:",
+        error
+      );
     } finally {
       setLoading(false);
     }
@@ -141,28 +159,45 @@ export default function CoachHomeScreen() {
         { data: sessions, error: sessionError },
       ] = await Promise.all([
         supabase.rpc("get_coach_training_comments"),
+
         supabase
           .from("profiles")
           .select("name, athlete_id")
           .eq("role", "athlete"),
+
         supabase
           .from("training_sessions")
           .select("id, athlete_id, date, title"),
       ]);
 
       if (commentError) {
-        console.error("Kunde inte läsa kommentarer:", commentError);
-        setCommentMessage(`Kunde inte läsa kommentarer: ${commentError.message}`);
+        console.error(
+          "Kunde inte läsa kommentarer:",
+          commentError
+        );
+
+        setCommentMessage(
+          `Kunde inte läsa kommentarer: ${commentError.message}`
+        );
+
         return;
       }
 
       if (profileError) {
-        console.error("Kunde inte läsa adeptprofiler:", profileError);
+        console.error(
+          "Kunde inte läsa adeptprofiler:",
+          profileError
+        );
+
         return;
       }
 
       if (sessionError) {
-        console.error("Kunde inte läsa träningspass:", sessionError);
+        console.error(
+          "Kunde inte läsa träningspass:",
+          sessionError
+        );
+
         return;
       }
 
@@ -184,25 +219,43 @@ export default function CoachHomeScreen() {
         (commentData ?? []) as TrainingComment[]
       )
         .map((comment) => {
-          const session = sessionMap.get(comment.training_session_id);
+          const session = sessionMap.get(
+            comment.training_session_id
+          );
 
           return {
             ...comment,
+
             athleteName:
-              profileMap.get(comment.athlete_id) ?? "Okänd adept",
+              profileMap.get(comment.athlete_id) ??
+              "Okänd adept",
+
             sessionTitle:
               session?.title ?? "Träningspass",
+
             sessionDate:
               session?.date ?? "",
           };
         })
-        .filter((comment) => Boolean(sessionMap.has(comment.training_session_id)));
+        .filter((comment) =>
+          Boolean(
+            sessionMap.has(
+              comment.training_session_id
+            )
+          )
+        );
 
       setComments(mappedComments);
       setCommentMessage(null);
     } catch (error) {
-      console.error("Kunde inte läsa kommentarer:", error);
-      setCommentMessage("Kunde inte läsa kommentarer.");
+      console.error(
+        "Kunde inte läsa kommentarer:",
+        error
+      );
+
+      setCommentMessage(
+        "Kunde inte läsa kommentarer."
+      );
     } finally {
       setLoadingComments(false);
     }
@@ -217,43 +270,76 @@ export default function CoachHomeScreen() {
       setSendingReply(true);
       setCommentMessage(null);
 
-      const { data, error } = await supabase.rpc(
-        "create_training_comment",
-        {
-          p_training_session_id: replyingTo.training_session_id,
-          p_athlete_id: replyingTo.athlete_id,
-          p_message: replyText.trim(),
-        }
-      );
+      const { data, error } =
+        await supabase.rpc(
+          "create_training_comment",
+          {
+            p_training_session_id:
+              replyingTo.training_session_id,
+
+            p_athlete_id:
+              replyingTo.athlete_id,
+
+            p_message:
+              replyText.trim(),
+          }
+        );
 
       if (error) {
-        console.error("Kunde inte skicka svar:", error);
-        setCommentMessage(`Kunde inte skicka: ${error.message}`);
+        console.error(
+          "Kunde inte skicka svar:",
+          error
+        );
+
+        setCommentMessage(
+          `Kunde inte skicka: ${error.message}`
+        );
+
         return;
       }
 
       if (!data) {
-        setCommentMessage("Svaret kunde inte skickas.");
+        setCommentMessage(
+          "Svaret kunde inte skickas."
+        );
+
         return;
       }
 
-      const newComment = data as TrainingComment;
+      const newComment =
+        data as TrainingComment;
 
-      setComments((current) => [
+      const newCommentWithContext: CommentWithContext =
         {
           ...newComment,
-          athleteName: replyingTo.athleteName,
-          sessionTitle: replyingTo.sessionTitle,
-          sessionDate: replyingTo.sessionDate,
-        },
+
+          athleteName:
+            replyingTo.athleteName,
+
+          sessionTitle:
+            replyingTo.sessionTitle,
+
+          sessionDate:
+            replyingTo.sessionDate,
+        };
+
+      setComments((current) => [
+        newCommentWithContext,
         ...current,
       ]);
 
       setReplyText("");
       setReplyingTo(null);
-      setCommentMessage("Svaret är skickat ✓");
+
+      setCommentMessage(
+        "Svaret är skickat ✓"
+      );
     } catch (error) {
-      console.error("Kunde inte skicka svar:", error);
+      console.error(
+        "Kunde inte skicka svar:",
+        error
+      );
+
       setCommentMessage(
         error instanceof Error
           ? error.message
@@ -274,13 +360,20 @@ export default function CoachHomeScreen() {
     setImporting(true);
 
     try {
-      const sessions = await importEricTrainingPlan();
+      const sessions =
+        await importEricTrainingPlan();
 
       setImportMessage(
-        `Klart! ${sessions?.length ?? 0} träningspass importerades för Eric.`
+        `Klart! ${
+          sessions?.length ?? 0
+        } träningspass importerades för Eric.`
       );
     } catch (error) {
-      console.error("Importfel:", error);
+      console.error(
+        "Importfel:",
+        error
+      );
+
       setImportMessage(
         "Importen misslyckades. Kontrollera konsolen."
       );
@@ -293,31 +386,43 @@ export default function CoachHomeScreen() {
     <Screen>
       <View style={styles.header}>
         <View style={styles.headerTop}>
-          <SectionLabel>COACH</SectionLabel>
+          <SectionLabel>
+            COACH
+          </SectionLabel>
 
           <Pressable
             onPress={handleLogout}
             style={styles.logoutButton}
           >
-            <BodyText style={styles.logoutText}>
+            <BodyText
+              style={styles.logoutText}
+            >
               Logga ut
             </BodyText>
           </Pressable>
         </View>
 
-        <Metric>Träningsöversikt</Metric>
+        <Metric>
+          Träningsöversikt
+        </Metric>
 
         <BodyText style={styles.subtitle}>
-          Välj en adept för att planera och följa träningen.
+          Välj en adept för att planera och
+          följa träningen.
         </BodyText>
       </View>
 
-      <SectionLabel>ADEPTER</SectionLabel>
+      <SectionLabel>
+        ADEPTER
+      </SectionLabel>
 
       {loading ? (
         <View style={styles.loading}>
           <ActivityIndicator />
-          <BodyText style={styles.loadingText}>
+
+          <BodyText
+            style={styles.loadingText}
+          >
             Hämtar adepter...
           </BodyText>
         </View>
@@ -326,32 +431,47 @@ export default function CoachHomeScreen() {
           <Pressable
             key={athlete.id}
             onPress={() =>
-              router.push(`/coach/athlete/${athlete.id}`)
+              router.push(
+                `/coach/athlete/${athlete.id}`
+              )
             }
           >
             <Card>
               <View style={styles.topRow}>
-                <BodyText style={styles.name}>
+                <BodyText
+                  style={styles.name}
+                >
                   {athlete.name}
                 </BodyText>
 
-                <BodyText style={styles.score}>
+                <BodyText
+                  style={styles.score}
+                >
                   {athlete.score > 0
                     ? athlete.score.toFixed(1)
                     : "–"}
                 </BodyText>
               </View>
 
-              <BodyText style={styles.status}>
-                {getStatusIcon(athlete.status)}{" "}
+              <BodyText
+                style={styles.status}
+              >
+                {getStatusIcon(
+                  athlete.status
+                )}{" "}
                 {athlete.statusText}
               </BodyText>
 
-              <BodyText style={styles.training}>
-                Nästa: {athlete.nextKeySession}
+              <BodyText
+                style={styles.training}
+              >
+                Nästa:{" "}
+                {athlete.nextKeySession}
               </BodyText>
 
-              <BodyText style={styles.link}>
+              <BodyText
+                style={styles.link}
+              >
                 Planera träning →
               </BodyText>
             </Card>
@@ -360,179 +480,281 @@ export default function CoachHomeScreen() {
       )}
 
       <View style={styles.commentsSection}>
-        <View style={styles.sectionHeaderRow}>
-          <SectionLabel>DIALOG MED ADEPTER</SectionLabel>
+        <View
+          style={styles.sectionHeaderRow}
+        >
+          <SectionLabel>
+            DIALOG MED ADEPTER
+          </SectionLabel>
 
           <Pressable
             onPress={loadComments}
             disabled={loadingComments}
             style={styles.refreshButton}
           >
-            <BodyText style={styles.refreshText}>
-              {loadingComments ? "Laddar..." : "Uppdatera"}
+            <BodyText
+              style={styles.refreshText}
+            >
+              {loadingComments
+                ? "Laddar..."
+                : "Uppdatera"}
             </BodyText>
           </Pressable>
         </View>
 
         {commentMessage && (
-          <BodyText style={styles.commentMessage}>
+          <BodyText
+            style={styles.commentMessage}
+          >
             {commentMessage}
           </BodyText>
         )}
 
         {loadingComments ? (
-          <View style={styles.commentsLoading}>
+          <View
+            style={styles.commentsLoading}
+          >
             <ActivityIndicator />
-            <BodyText style={styles.loadingText}>
+
+            <BodyText
+              style={styles.loadingText}
+            >
               Hämtar meddelanden...
             </BodyText>
           </View>
         ) : comments.length === 0 ? (
           <Card>
-            <BodyText style={styles.emptyComments}>
+            <BodyText
+              style={styles.emptyComments}
+            >
               Inga meddelanden ännu.
             </BodyText>
           </Card>
         ) : (
           comments.map((comment) => (
             <Card key={comment.id}>
-              <View style={styles.commentHeader}>
-                <View style={styles.commentHeaderText}>
-                  <BodyText style={styles.athleteName}>
+              <View
+                style={styles.commentHeader}
+              >
+                <View
+                  style={
+                    styles.commentHeaderText
+                  }
+                >
+                  <BodyText
+                    style={
+                      styles.athleteName
+                    }
+                  >
                     {comment.athleteName}
                   </BodyText>
 
-                  <BodyText style={styles.sessionInfo}>
+                  <BodyText
+                    style={
+                      styles.sessionInfo
+                    }
+                  >
                     {comment.sessionTitle}
+
                     {comment.sessionDate
-                      ? ` · ${formatDate(comment.sessionDate)}`
+                      ? ` · ${formatDate(
+                          comment.sessionDate
+                        )}`
                       : ""}
                   </BodyText>
                 </View>
 
-                <BodyText style={styles.commentDate}>
-                  {formatCommentDate(comment.created_at)}
+                <BodyText
+                  style={styles.commentDate}
+                >
+                  {formatCommentDate(
+                    comment.created_at
+                  )}
                 </BodyText>
               </View>
 
               <View
                 style={[
                   styles.commentBubble,
-                  comment.author_role === "coach"
+                  comment.author_role ===
+                  "coach"
                     ? styles.coachBubble
                     : styles.athleteBubble,
                 ]}
               >
-                <BodyText style={styles.commentAuthor}>
-                  {comment.author_role === "coach"
+                <BodyText
+                  style={
+                    styles.commentAuthor
+                  }
+                >
+                  {comment.author_role ===
+                  "coach"
                     ? "Du"
                     : "Adept"}
                 </BodyText>
 
-                <BodyText style={styles.commentText}>
+                <BodyText
+                  style={styles.commentText}
+                >
                   {comment.message}
                 </BodyText>
               </View>
 
-              {comment.author_role === "athlete" && (
-                <Pressable
-                  onPress={() => {
-                    setReplyingTo(comment);
-                    setReplyText("");
-                    setCommentMessage(null);
-                  }}
-                  style={styles.replyButton}
-                >
-                  <BodyText style={styles.replyButtonText}>
-                    Svara
-                  </BodyText>
-                </Pressable>
+              {comment.author_role ===
+                "athlete" && (
+                <>
+                  {replyingTo?.id ===
+                  comment.id ? (
+                    <View
+                      style={
+                        styles.inlineReply
+                      }
+                    >
+                      <View
+                        style={
+                          styles.replyHeader
+                        }
+                      >
+                        <View
+                          style={
+                            styles.replyHeaderText
+                          }
+                        >
+                          <BodyText
+                            style={
+                              styles.replyLabel
+                            }
+                          >
+                            SVAR TILL{" "}
+                            {comment.athleteName.toUpperCase()}
+                          </BodyText>
+                        </View>
+
+                        <Pressable
+                          onPress={() => {
+                            setReplyingTo(
+                              null
+                            );
+                            setReplyText("");
+                          }}
+                          style={
+                            styles.closeReplyButton
+                          }
+                        >
+                          <BodyText
+                            style={
+                              styles.closeReplyText
+                            }
+                          >
+                            ×
+                          </BodyText>
+                        </Pressable>
+                      </View>
+
+                      <TextInput
+                        value={replyText}
+                        onChangeText={
+                          setReplyText
+                        }
+                        placeholder="Skriv ett svar..."
+                        placeholderTextColor="#8A94A6"
+                        style={
+                          styles.replyInput
+                        }
+                        multiline
+                        textAlignVertical="top"
+                      />
+
+                      <Pressable
+                        onPress={
+                          handleSendReply
+                        }
+                        disabled={
+                          sendingReply ||
+                          !replyText.trim()
+                        }
+                        style={[
+                          styles.sendButton,
+                          (sendingReply ||
+                            !replyText.trim()) &&
+                            styles.sendButtonDisabled,
+                        ]}
+                      >
+                        <BodyText
+                          style={
+                            styles.sendButtonText
+                          }
+                        >
+                          {sendingReply
+                            ? "Skickar..."
+                            : "Skicka svar"}
+                        </BodyText>
+                      </Pressable>
+                    </View>
+                  ) : (
+                    <Pressable
+                      onPress={() => {
+                        setReplyingTo(
+                          comment
+                        );
+                        setReplyText("");
+                        setCommentMessage(
+                          null
+                        );
+                      }}
+                      style={
+                        styles.replyButton
+                      }
+                    >
+                      <BodyText
+                        style={
+                          styles.replyButtonText
+                        }
+                      >
+                        Svara
+                      </BodyText>
+                    </Pressable>
+                  )}
+                </>
               )}
             </Card>
           ))
         )}
-
-        {replyingTo && (
-          <Card>
-            <View style={styles.replyHeader}>
-              <View style={styles.replyHeaderText}>
-                <SectionLabel>SVARA TILL</SectionLabel>
-
-                <BodyText style={styles.replyTitle}>
-                  {replyingTo.athleteName}
-                </BodyText>
-
-                <BodyText style={styles.sessionInfo}>
-                  {replyingTo.sessionTitle}
-                </BodyText>
-              </View>
-
-              <Pressable
-                onPress={() => {
-                  setReplyingTo(null);
-                  setReplyText("");
-                }}
-                style={styles.closeReplyButton}
-              >
-                <BodyText style={styles.closeReplyText}>
-                  ×
-                </BodyText>
-              </Pressable>
-            </View>
-
-            <TextInput
-              value={replyText}
-              onChangeText={setReplyText}
-              placeholder="Skriv ett svar..."
-              placeholderTextColor="#8A94A6"
-              style={styles.replyInput}
-              multiline
-              textAlignVertical="top"
-            />
-
-            <Pressable
-              onPress={handleSendReply}
-              disabled={
-                sendingReply || !replyText.trim()
-              }
-              style={[
-                styles.sendButton,
-                (sendingReply || !replyText.trim()) &&
-                  styles.sendButtonDisabled,
-              ]}
-            >
-              <BodyText style={styles.sendButtonText}>
-                {sendingReply
-                  ? "Skickar..."
-                  : "Skicka svar"}
-              </BodyText>
-            </Pressable>
-          </Card>
-        )}
       </View>
 
-      <View style={styles.importSection}>
-        <SectionLabel>TESTVERKTYG</SectionLabel>
+      <View
+        style={styles.importSection}
+      >
+        <SectionLabel>
+          TESTVERKTYG
+        </SectionLabel>
 
         <Pressable
           onPress={handleImportEric}
           disabled={importing}
           style={[
             styles.importButton,
-            importing && styles.disabledButton,
+            importing &&
+              styles.disabledButton,
           ]}
         >
           {importing ? (
             <ActivityIndicator />
           ) : (
-            <BodyText style={styles.importButtonText}>
+            <BodyText
+              style={
+                styles.importButtonText
+              }
+            >
               Importera Erics testschema
             </BodyText>
           )}
         </Pressable>
 
         {importMessage && (
-          <BodyText style={styles.importMessage}>
+          <BodyText
+            style={styles.importMessage}
+          >
             {importMessage}
           </BodyText>
         )}
@@ -542,22 +764,32 @@ export default function CoachHomeScreen() {
 }
 
 function formatDate(date: string) {
-  const parsed = new Date(`${date}T00:00:00Z`);
+  const parsed = new Date(
+    `${date}T00:00:00Z`
+  );
 
-  return parsed.toLocaleDateString("sv-SE", {
-    day: "numeric",
-    month: "short",
-    timeZone: "UTC",
-  });
+  return parsed.toLocaleDateString(
+    "sv-SE",
+    {
+      day: "numeric",
+      month: "short",
+      timeZone: "UTC",
+    }
+  );
 }
 
-function formatCommentDate(value: string) {
-  return new Date(value).toLocaleString("sv-SE", {
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+function formatCommentDate(
+  value: string
+) {
+  return new Date(value).toLocaleString(
+    "sv-SE",
+    {
+      day: "numeric",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    }
+  );
 }
 
 function getStatusIcon(
@@ -590,7 +822,8 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 10,
     borderRadius: 7,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor:
+      "rgba(255,255,255,0.06)",
   },
 
   logoutText: {
@@ -671,7 +904,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 7,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor:
+      "rgba(255,255,255,0.06)",
   },
 
   refreshText: {
@@ -725,13 +959,17 @@ const styles = StyleSheet.create({
   },
 
   athleteBubble: {
-    backgroundColor: "rgba(80,200,140,0.08)",
-    borderColor: "rgba(80,200,140,0.18)",
+    backgroundColor:
+      "rgba(80,200,140,0.08)",
+    borderColor:
+      "rgba(80,200,140,0.18)",
   },
 
   coachBubble: {
-    backgroundColor: "rgba(80,130,220,0.08)",
-    borderColor: "rgba(80,130,220,0.18)",
+    backgroundColor:
+      "rgba(80,130,220,0.08)",
+    borderColor:
+      "rgba(80,130,220,0.18)",
   },
 
   commentAuthor: {
@@ -752,12 +990,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 7,
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor:
+      "rgba(255,255,255,0.08)",
   },
 
   replyButtonText: {
     fontSize: 12,
     fontWeight: "700",
+  },
+
+  inlineReply: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#E1E7EF",
   },
 
   replyHeader: {
@@ -770,10 +1016,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
-  replyTitle: {
-    marginTop: 4,
-    fontSize: 16,
+  replyLabel: {
+    fontSize: 11,
     fontWeight: "700",
+    opacity: 0.55,
   },
 
   closeReplyButton: {
@@ -782,7 +1028,8 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor:
+      "rgba(255,255,255,0.08)",
   },
 
   closeReplyText: {
@@ -810,7 +1057,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 16,
     borderRadius: 8,
-    backgroundColor: "rgba(80,200,140,0.9)",
+    backgroundColor:
+      "rgba(80,200,140,0.9)",
   },
 
   sendButtonDisabled: {
@@ -834,7 +1082,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 16,
     borderRadius: 9,
-    backgroundColor: "rgba(80,200,140,0.9)",
+    backgroundColor:
+      "rgba(80,200,140,0.9)",
   },
 
   disabledButton: {
