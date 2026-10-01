@@ -140,7 +140,7 @@ export default function CoachAthleteScreen() {
     );
 
   const [viewMode, setViewMode] =
-    useState<"week" | "month">("week");
+    useState<"week" | "month" | "profile">("week");
 
   const [monthStart, setMonthStart] =
     useState<string>(() =>
@@ -712,13 +712,13 @@ export default function CoachAthleteScreen() {
   }
 
   function switchView(
-    nextView: "week" | "month"
+    nextView: "week" | "month" | "profile"
   ) {
     if (nextView === "month") {
       setMonthStart(
         getMonthStart(weekStart)
       );
-    } else {
+    } else if (nextView === "week") {
       setWeekStart(
         getMonday(
           parseDate(monthStart)
@@ -961,7 +961,7 @@ export default function CoachAthleteScreen() {
                   styles.viewToggleTextActive,
               ]}
             >
-              Veckovy
+              Vecka
             </BodyText>
           </Pressable>
 
@@ -980,11 +980,33 @@ export default function CoachAthleteScreen() {
                   styles.viewToggleTextActive,
               ]}
             >
-              Månadsvy
+              Månad
+            </BodyText>
+          </Pressable>
+
+          <Pressable
+            onPress={() => switchView("profile")}
+            style={[
+              styles.viewToggleButton,
+              styles.profileToggleButton,
+              viewMode === "profile" &&
+                styles.viewToggleButtonActive,
+            ]}
+          >
+            <BodyText
+              style={[
+                styles.viewToggleText,
+                viewMode === "profile" &&
+                  styles.viewToggleTextActive,
+              ]}
+            >
+              Profil & prestation
             </BodyText>
           </Pressable>
         </View>
 
+        {viewMode !== "profile" && (
+          <>
         <View
           style={[
             styles.weekNavigation,
@@ -1327,9 +1349,790 @@ export default function CoachAthleteScreen() {
               )}
             </Card>
           )}
+          </>
+        )}
+
+        {viewMode === "profile" && (
+          <AthletePerformanceView
+            athleteId={athlete.id}
+            athleteName={athlete.name}
+          />
+        )}
       </Screen>
     </>
   );
+}
+
+
+type AthleteTestValue = {
+  id: string;
+  athlete_id: string;
+  test_date: string;
+  lt_pulse: number | null;
+  lt_pace_seconds: number | null;
+  at_pulse: number | null;
+  at_pace_seconds: number | null;
+  lt_lactate: number | null;
+  at_lactate: number | null;
+  weight_kg: number | null;
+  notes: string | null;
+};
+
+type AthletePersonalBest = {
+  id: string;
+  athlete_id: string;
+  distance: string;
+  time_seconds: number;
+  achieved_date: string | null;
+  notes: string | null;
+};
+
+type TestForm = {
+  testDate: string;
+  ltPulse: string;
+  ltPace: string;
+  atPulse: string;
+  atPace: string;
+  ltLactate: string;
+  atLactate: string;
+  weight: string;
+  notes: string;
+};
+
+type PbForm = {
+  distance: string;
+  time: string;
+  date: string;
+  notes: string;
+};
+
+const STANDARD_DISTANCES = [
+  "1500 m",
+  "3 km",
+  "5 km",
+  "10 km",
+  "Halvmaraton",
+  "Maraton",
+];
+
+function AthletePerformanceView({
+  athleteId,
+  athleteName,
+}: {
+  athleteId: string;
+  athleteName: string;
+}) {
+  const [tests, setTests] = useState<AthleteTestValue[]>([]);
+  const [personalBests, setPersonalBests] = useState<AthletePersonalBest[]>([]);
+  const [coachNotes, setCoachNotes] = useState("");
+  const [loadingProfile, setLoadingProfile] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [editingTest, setEditingTest] = useState(false);
+  const [editingNotes, setEditingNotes] = useState(false);
+  const [editingPbId, setEditingPbId] = useState<string | null>(null);
+  const [testForm, setTestForm] = useState<TestForm>(createEmptyTestForm());
+  const [pbForm, setPbForm] = useState<PbForm>(createEmptyPbForm());
+
+  useEffect(() => {
+    loadProfile();
+  }, [athleteId]);
+
+  async function loadProfile() {
+    try {
+      setLoadingProfile(true);
+      setError(null);
+
+      const [testsResult, pbsResult, notesResult] = await Promise.all([
+        supabase
+          .from("athlete_test_values")
+          .select("id, athlete_id, test_date, lt_pulse, lt_pace_seconds, at_pulse, at_pace_seconds, lt_lactate, at_lactate, weight_kg, notes")
+          .eq("athlete_id", athleteId)
+          .order("test_date", { ascending: false }),
+        supabase
+          .from("athlete_personal_bests")
+          .select("id, athlete_id, distance, time_seconds, achieved_date, notes")
+          .eq("athlete_id", athleteId)
+          .order("achieved_date", { ascending: false, nullsFirst: false }),
+        supabase
+          .from("athlete_coach_notes")
+          .select("notes")
+          .eq("athlete_id", athleteId)
+          .maybeSingle(),
+      ]);
+
+      if (testsResult.error) throw testsResult.error;
+      if (pbsResult.error) throw pbsResult.error;
+      if (notesResult.error) throw notesResult.error;
+
+      const loadedTests = (testsResult.data ?? []) as AthleteTestValue[];
+      setTests(loadedTests);
+      setPersonalBests((pbsResult.data ?? []) as AthletePersonalBest[]);
+      setCoachNotes(notesResult.data?.notes ?? "");
+
+      if (loadedTests[0]) {
+        setTestForm(testValueToForm(loadedTests[0]));
+      } else {
+        setTestForm(createEmptyTestForm());
+      }
+    } catch (loadError) {
+      console.error("Kunde inte läsa prestationsprofilen:", loadError);
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Kunde inte läsa prestationsprofilen."
+      );
+    } finally {
+      setLoadingProfile(false);
+    }
+  }
+
+  async function saveTest() {
+    try {
+      setSaving(true);
+      setError(null);
+
+      if (!testForm.testDate) {
+        throw new Error("Ange datum för testet.");
+      }
+
+      const payload = {
+        athlete_id: athleteId,
+        test_date: testForm.testDate,
+        lt_pulse: parseOptionalInteger(testForm.ltPulse),
+        lt_pace_seconds: parsePace(testForm.ltPace),
+        at_pulse: parseOptionalInteger(testForm.atPulse),
+        at_pace_seconds: parsePace(testForm.atPace),
+        lt_lactate: parseOptionalNumber(testForm.ltLactate),
+        at_lactate: parseOptionalNumber(testForm.atLactate),
+        weight_kg: parseOptionalNumber(testForm.weight),
+        notes: testForm.notes.trim() || null,
+        updated_at: new Date().toISOString(),
+      };
+
+      const result = latestTest
+        ? await supabase
+            .from("athlete_test_values")
+            .update(payload)
+            .eq("id", latestTest.id)
+        : await supabase
+            .from("athlete_test_values")
+            .insert(payload);
+
+      if (result.error) throw result.error;
+
+      await loadProfile();
+      setEditingTest(false);
+    } catch (saveError) {
+      console.error("Kunde inte spara testvärden:", saveError);
+      setError(
+        saveError instanceof Error
+          ? saveError.message
+          : "Kunde inte spara testvärden."
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deleteTest(testId: string) {
+    try {
+      setSaving(true);
+      setError(null);
+
+      const { error: deleteError } = await supabase
+        .from("athlete_test_values")
+        .delete()
+        .eq("id", testId);
+
+      if (deleteError) throw deleteError;
+
+      await loadProfile();
+    } catch (deleteError) {
+      console.error("Kunde inte ta bort testet:", deleteError);
+      setError("Kunde inte ta bort testet.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function savePersonalBest() {
+    try {
+      setSaving(true);
+      setError(null);
+
+      const timeSeconds = parseTimeToSeconds(pbForm.time);
+
+      if (!pbForm.distance.trim()) {
+        throw new Error("Ange distans.");
+      }
+
+      if (!timeSeconds) {
+        throw new Error("Ange en giltig tid, exempelvis 35:12.");
+      }
+
+      const payload = {
+        athlete_id: athleteId,
+        distance: pbForm.distance.trim(),
+        time_seconds: timeSeconds,
+        achieved_date: pbForm.date || null,
+        notes: pbForm.notes.trim() || null,
+        updated_at: new Date().toISOString(),
+      };
+
+      if (editingPbId) {
+        const { error: updateError } = await supabase
+          .from("athlete_personal_bests")
+          .update(payload)
+          .eq("id", editingPbId);
+
+        if (updateError) throw updateError;
+      } else {
+        const { error: insertError } = await supabase
+          .from("athlete_personal_bests")
+          .insert(payload);
+
+        if (insertError) throw insertError;
+      }
+
+      await loadProfile();
+      closePbForm();
+    } catch (saveError) {
+      console.error("Kunde inte spara personbästat:", saveError);
+      setError(
+        saveError instanceof Error
+          ? saveError.message
+          : "Kunde inte spara personbästat."
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deletePersonalBest(id: string) {
+    try {
+      setSaving(true);
+      setError(null);
+
+      const { error: deleteError } = await supabase
+        .from("athlete_personal_bests")
+        .delete()
+        .eq("id", id);
+
+      if (deleteError) throw deleteError;
+
+      await loadProfile();
+    } catch (deleteError) {
+      console.error("Kunde inte ta bort personbästat:", deleteError);
+      setError("Kunde inte ta bort personbästat.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveNotes() {
+    try {
+      setSaving(true);
+      setError(null);
+
+      const { error: saveError } = await supabase
+        .from("athlete_coach_notes")
+        .upsert(
+          {
+            athlete_id: athleteId,
+            notes: coachNotes,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "athlete_id" }
+        );
+
+      if (saveError) throw saveError;
+
+      setEditingNotes(false);
+    } catch (saveError) {
+      console.error("Kunde inte spara coachanteckningarna:", saveError);
+      setError("Kunde inte spara coachanteckningarna.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function openNewPbForm() {
+    setEditingPbId(null);
+    setPbForm(createEmptyPbForm());
+  }
+
+  function openEditPbForm(pb: AthletePersonalBest) {
+    setEditingPbId(pb.id);
+    setPbForm({
+      distance: pb.distance,
+      time: formatTime(pb.time_seconds),
+      date: pb.achieved_date ?? "",
+      notes: pb.notes ?? "",
+    });
+  }
+
+  function closePbForm() {
+    setEditingPbId(null);
+    setPbForm(createEmptyPbForm());
+  }
+
+  const latestTest = tests[0] ?? null;
+
+  if (loadingProfile) {
+    return (
+      <Card>
+        <BodyText>Laddar profil och prestation...</BodyText>
+      </Card>
+    );
+  }
+
+  return (
+    <View style={styles.performanceView}>
+      <View style={styles.performanceIntro}>
+        <View style={styles.performanceIntroText}>
+          <SectionLabel>PROFIL & PRESTATION</SectionLabel>
+          <BodyText style={styles.performanceTitle}>{athleteName}</BodyText>
+          <BodyText style={styles.performanceSubtitle}>
+            Fysiologi, personbästa och coachanteckningar samlade på ett ställe.
+          </BodyText>
+        </View>
+      </View>
+
+      {error && <BodyText style={styles.error}>{error}</BodyText>}
+
+      <Card>
+        <View style={styles.performanceSectionHeader}>
+          <View>
+            <SectionLabel>FYSIOLOGI</SectionLabel>
+            <BodyText style={styles.performanceSectionTitle}>
+              Senaste testet
+            </BodyText>
+          </View>
+          <Pressable
+            onPress={() => {
+              if (!editingTest && latestTest) {
+                setTestForm(testValueToForm(latestTest));
+              }
+              setEditingTest((current) => !current);
+            }}
+            style={styles.smallActionButton}
+          >
+            <BodyText style={styles.smallActionButtonText}>
+              {editingTest ? "Stäng" : "Redigera"}
+            </BodyText>
+          </Pressable>
+        </View>
+
+        {latestTest ? (
+          <>
+            <View style={styles.metricGrid}>
+              <PerformanceMetric label="LT-puls" value={formatPulse(latestTest.lt_pulse)} />
+              <PerformanceMetric label="LT-fart" value={formatPace(latestTest.lt_pace_seconds)} />
+              <PerformanceMetric label="AT-puls" value={formatPulse(latestTest.at_pulse)} />
+              <PerformanceMetric label="AT-fart" value={formatPace(latestTest.at_pace_seconds)} />
+            </View>
+            <View style={styles.testMetaRow}>
+              <BodyText style={styles.testMeta}>Test: {formatLongDate(latestTest.test_date)}</BodyText>
+              {latestTest.weight_kg != null && (
+                <BodyText style={styles.testMeta}>{latestTest.weight_kg} kg</BodyText>
+              )}
+            </View>
+          </>
+        ) : (
+          <BodyText style={styles.emptyPerformanceText}>
+            Inga testvärden är registrerade ännu.
+          </BodyText>
+        )}
+
+        {latestTest?.notes ? (
+          <BodyText style={styles.testNotes}>{latestTest.notes}</BodyText>
+        ) : null}
+
+        {editingTest && (
+          <View style={styles.performanceForm}>
+            <BodyText style={styles.inputLabel}>Datum</BodyText>
+            <TextInput
+              value={testForm.testDate}
+              onChangeText={(testDate) => setTestForm((current) => ({ ...current, testDate }))}
+              placeholder="2026-10-01"
+              placeholderTextColor="#8A94A6"
+              style={styles.performanceInput}
+            />
+
+            <View style={styles.formTwoColumns}>
+              <PerformanceInput label="LT-puls" value={testForm.ltPulse} onChange={(value) => setTestForm((current) => ({ ...current, ltPulse: value }))} placeholder="160" />
+              <PerformanceInput label="LT-fart" value={testForm.ltPace} onChange={(value) => setTestForm((current) => ({ ...current, ltPace: value }))} placeholder="3:50" />
+              <PerformanceInput label="AT-puls" value={testForm.atPulse} onChange={(value) => setTestForm((current) => ({ ...current, atPulse: value }))} placeholder="178" />
+              <PerformanceInput label="AT-fart" value={testForm.atPace} onChange={(value) => setTestForm((current) => ({ ...current, atPace: value }))} placeholder="3:25" />
+              <PerformanceInput label="LT-laktat" value={testForm.ltLactate} onChange={(value) => setTestForm((current) => ({ ...current, ltLactate: value }))} placeholder="3.0" />
+              <PerformanceInput label="AT-laktat" value={testForm.atLactate} onChange={(value) => setTestForm((current) => ({ ...current, atLactate: value }))} placeholder="4.0" />
+              <PerformanceInput label="Vikt" value={testForm.weight} onChange={(value) => setTestForm((current) => ({ ...current, weight: value }))} placeholder="72.5" />
+            </View>
+
+            <BodyText style={styles.inputLabel}>Testanteckning</BodyText>
+            <TextInput
+              value={testForm.notes}
+              onChangeText={(notes) => setTestForm((current) => ({ ...current, notes }))}
+              placeholder="Exempelvis testförhållanden, känsla eller kommentar"
+              placeholderTextColor="#8A94A6"
+              style={[styles.performanceInput, styles.multilineInput]}
+              multiline
+            />
+
+            <View style={styles.formActions}>
+              <Pressable onPress={saveTest} disabled={saving} style={styles.primaryActionButton}>
+                <BodyText style={styles.primaryActionText}>{saving ? "Sparar..." : "Spara test"}</BodyText>
+              </Pressable>
+              {latestTest && (
+                <Pressable onPress={() => deleteTest(latestTest.id)} disabled={saving} style={styles.dangerActionButton}>
+                  <BodyText style={styles.dangerActionText}>Ta bort senaste</BodyText>
+                </Pressable>
+              )}
+            </View>
+          </View>
+        )}
+      </Card>
+
+      <Card>
+        <View style={styles.performanceSectionHeader}>
+          <View>
+            <SectionLabel>PERSONBÄSTA</SectionLabel>
+            <BodyText style={styles.performanceSectionTitle}>Tävlingsresultat</BodyText>
+          </View>
+          <Pressable onPress={openNewPbForm} style={styles.smallActionButton}>
+            <BodyText style={styles.smallActionButtonText}>+ Lägg till</BodyText>
+          </Pressable>
+        </View>
+
+        {personalBests.length ? (
+          <View style={styles.pbList}>
+            {sortPersonalBests(personalBests).map((pb) => (
+              <Pressable key={pb.id} onPress={() => openEditPbForm(pb)} style={styles.pbRow}>
+                <View style={styles.pbDistanceBlock}>
+                  <BodyText style={styles.pbDistance}>{pb.distance}</BodyText>
+                  {pb.achieved_date ? <BodyText style={styles.pbDate}>{formatLongDate(pb.achieved_date)}</BodyText> : null}
+                </View>
+                <BodyText style={styles.pbTime}>{formatTime(pb.time_seconds)}</BodyText>
+                <BodyText style={styles.pbPace}>{formatPbPace(pb.distance, pb.time_seconds)}</BodyText>
+                <BodyText style={styles.pbEditIcon}>›</BodyText>
+              </Pressable>
+            ))}
+          </View>
+        ) : (
+          <BodyText style={styles.emptyPerformanceText}>Inga personbästa är registrerade ännu.</BodyText>
+        )}
+
+        <View style={styles.standardDistanceList}>
+          {STANDARD_DISTANCES.map((distance) => {
+            const exists = personalBests.some((pb) => pb.distance.toLowerCase() === distance.toLowerCase());
+            return (
+              <Pressable
+                key={distance}
+                onPress={() => {
+                  const existing = personalBests.find((pb) => pb.distance.toLowerCase() === distance.toLowerCase());
+                  if (existing) {
+                    openEditPbForm(existing);
+                  } else {
+                    setEditingPbId(null);
+                    setPbForm({ ...createEmptyPbForm(), distance });
+                  }
+                }}
+                style={[styles.distanceChip, exists && styles.distanceChipFilled]}
+              >
+                <BodyText style={[styles.distanceChipText, exists && styles.distanceChipTextFilled]}>
+                  {distance} {exists ? "✓" : "+"}
+                </BodyText>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        {(editingPbId || pbForm.distance) && (
+          <View style={styles.performanceForm}>
+            <BodyText style={styles.inputLabel}>Distans</BodyText>
+            <TextInput
+              value={pbForm.distance}
+              onChangeText={(distance) => setPbForm((current) => ({ ...current, distance }))}
+              placeholder="Exempelvis 8 km"
+              placeholderTextColor="#8A94A6"
+              style={styles.performanceInput}
+            />
+
+            <View style={styles.formTwoColumns}>
+              <PerformanceInput label="Tid" value={pbForm.time} onChange={(value) => setPbForm((current) => ({ ...current, time: value }))} placeholder="35:12" />
+              <PerformanceInput label="Datum" value={pbForm.date} onChange={(value) => setPbForm((current) => ({ ...current, date: value }))} placeholder="2026-09-20" />
+            </View>
+
+            <BodyText style={styles.inputLabel}>Anteckning (valfritt)</BodyText>
+            <TextInput
+              value={pbForm.notes}
+              onChangeText={(notes) => setPbForm((current) => ({ ...current, notes }))}
+              placeholder="Exempelvis tävling eller bana"
+              placeholderTextColor="#8A94A6"
+              style={styles.performanceInput}
+            />
+
+            <View style={styles.formActions}>
+              <Pressable onPress={savePersonalBest} disabled={saving} style={styles.primaryActionButton}>
+                <BodyText style={styles.primaryActionText}>{saving ? "Sparar..." : "Spara PB"}</BodyText>
+              </Pressable>
+              {editingPbId && (
+                <Pressable onPress={() => deletePersonalBest(editingPbId)} disabled={saving} style={styles.dangerActionButton}>
+                  <BodyText style={styles.dangerActionText}>Ta bort</BodyText>
+                </Pressable>
+              )}
+              <Pressable onPress={closePbForm} disabled={saving} style={styles.secondaryActionButton}>
+                <BodyText style={styles.secondaryActionText}>Avbryt</BodyText>
+              </Pressable>
+            </View>
+          </View>
+        )}
+      </Card>
+
+      <Card>
+        <View style={styles.performanceSectionHeader}>
+          <View>
+            <SectionLabel>TESTHISTORIK</SectionLabel>
+            <BodyText style={styles.performanceSectionTitle}>Tidigare mätningar</BodyText>
+          </View>
+        </View>
+
+        {tests.length > 1 ? (
+          <View style={styles.testHistoryList}>
+            {tests.slice(1).map((test) => (
+              <View key={test.id} style={styles.testHistoryRow}>
+                <View style={styles.testHistoryDateBlock}>
+                  <BodyText style={styles.testHistoryDate}>{formatLongDate(test.test_date)}</BodyText>
+                  {test.weight_kg != null && <BodyText style={styles.testHistoryMeta}>{test.weight_kg} kg</BodyText>}
+                </View>
+                <View style={styles.testHistoryValues}>
+                  <BodyText style={styles.testHistoryValue}>LT {formatPulse(test.lt_pulse)} · {formatPace(test.lt_pace_seconds)}</BodyText>
+                  <BodyText style={styles.testHistoryValue}>AT {formatPulse(test.at_pulse)} · {formatPace(test.at_pace_seconds)}</BodyText>
+                </View>
+                <Pressable onPress={() => deleteTest(test.id)} disabled={saving}>
+                  <BodyText style={styles.historyDelete}>×</BodyText>
+                </Pressable>
+              </View>
+            ))}
+          </View>
+        ) : (
+          <BodyText style={styles.emptyPerformanceText}>När du sparar fler tester visas de här.</BodyText>
+        )}
+      </Card>
+
+      <Card>
+        <View style={styles.performanceSectionHeader}>
+          <View>
+            <SectionLabel>COACHANTECKNINGAR</SectionLabel>
+            <BodyText style={styles.performanceSectionTitle}>Om {athleteName}</BodyText>
+          </View>
+          <Pressable onPress={() => setEditingNotes((current) => !current)} style={styles.smallActionButton}>
+            <BodyText style={styles.smallActionButtonText}>{editingNotes ? "Stäng" : "Redigera"}</BodyText>
+          </Pressable>
+        </View>
+
+        {editingNotes ? (
+          <>
+            <TextInput
+              value={coachNotes}
+              onChangeText={setCoachNotes}
+              placeholder="Skriv egna coachanteckningar om adepten..."
+              placeholderTextColor="#8A94A6"
+              style={[styles.performanceInput, styles.notesInput]}
+              multiline
+            />
+            <Pressable onPress={saveNotes} disabled={saving} style={[styles.primaryActionButton, styles.notesSaveButton]}>
+              <BodyText style={styles.primaryActionText}>{saving ? "Sparar..." : "Spara anteckningar"}</BodyText>
+            </Pressable>
+          </>
+        ) : (
+          <BodyText style={styles.coachNotesText}>
+            {coachNotes.trim() || "Inga coachanteckningar har lagts till ännu."}
+          </BodyText>
+        )}
+      </Card>
+    </View>
+  );
+}
+
+function PerformanceMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.performanceMetric}>
+      <BodyText style={styles.performanceMetricLabel}>{label}</BodyText>
+      <BodyText style={styles.performanceMetricValue}>{value}</BodyText>
+    </View>
+  );
+}
+
+function PerformanceInput({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+}) {
+  return (
+    <View style={styles.formField}>
+      <BodyText style={styles.inputLabel}>{label}</BodyText>
+      <TextInput
+        value={value}
+        onChangeText={onChange}
+        placeholder={placeholder}
+        placeholderTextColor="#8A94A6"
+        style={styles.performanceInput}
+      />
+    </View>
+  );
+}
+
+function createEmptyTestForm(): TestForm {
+  return {
+    testDate: formatISODate(new Date()),
+    ltPulse: "",
+    ltPace: "",
+    atPulse: "",
+    atPace: "",
+    ltLactate: "",
+    atLactate: "",
+    weight: "",
+    notes: "",
+  };
+}
+
+function createEmptyPbForm(): PbForm {
+  return {
+    distance: "",
+    time: "",
+    date: formatISODate(new Date()),
+    notes: "",
+  };
+}
+
+function testValueToForm(test: AthleteTestValue): TestForm {
+  return {
+    testDate: test.test_date,
+    ltPulse: test.lt_pulse?.toString() ?? "",
+    ltPace: formatPaceInput(test.lt_pace_seconds),
+    atPulse: test.at_pulse?.toString() ?? "",
+    atPace: formatPaceInput(test.at_pace_seconds),
+    ltLactate: test.lt_lactate?.toString() ?? "",
+    atLactate: test.at_lactate?.toString() ?? "",
+    weight: test.weight_kg?.toString() ?? "",
+    notes: test.notes ?? "",
+  };
+}
+
+function parseOptionalInteger(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = Number.parseInt(trimmed, 10);
+  if (!Number.isFinite(parsed)) throw new Error(`Ogiltigt heltal: ${value}`);
+  return parsed;
+}
+
+function parseOptionalNumber(value: string) {
+  const trimmed = value.trim().replace(",", ".");
+  if (!trimmed) return null;
+  const parsed = Number.parseFloat(trimmed);
+  if (!Number.isFinite(parsed)) throw new Error(`Ogiltigt tal: ${value}`);
+  return parsed;
+}
+
+function parsePace(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parts = trimmed.split(":").map(Number);
+  if (parts.length === 1 && Number.isFinite(parts[0])) return Math.round(parts[0] * 60);
+  if (parts.length === 2 && Number.isFinite(parts[0]) && Number.isFinite(parts[1])) {
+    return parts[0] * 60 + parts[1];
+  }
+  throw new Error(`Ogiltigt tempo: ${value}`);
+}
+
+function parseTimeToSeconds(value: string) {
+  const parts = value.trim().split(":").map(Number);
+  if (parts.some((part) => !Number.isFinite(part))) return null;
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  return null;
+}
+
+function formatTime(seconds: number) {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = Math.round(seconds % 60);
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+  }
+  return `${minutes}:${String(secs).padStart(2, "0")}`;
+}
+
+function formatPulse(value: number | null) {
+  return value == null ? "–" : `${value} bpm`;
+}
+
+function formatPace(seconds: number | null) {
+  if (seconds == null) return "–";
+  const minutes = Math.floor(seconds / 60);
+  const secs = Math.round(seconds % 60);
+  return `${minutes}:${String(secs).padStart(2, "0")}/km`;
+}
+
+function formatPaceInput(seconds: number | null) {
+  if (seconds == null) return "";
+  const minutes = Math.floor(seconds / 60);
+  const secs = Math.round(seconds % 60);
+  return `${minutes}:${String(secs).padStart(2, "0")}`;
+}
+
+function formatLongDate(date: string) {
+  return parseDate(date).toLocaleDateString("sv-SE", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+function sortPersonalBests(items: AthletePersonalBest[]) {
+  const order = [
+    "1500 m",
+    "3 km",
+    "5 km",
+    "10 km",
+    "Halvmaraton",
+    "Maraton",
+  ];
+
+  return [...items].sort((a, b) => {
+    const ai = order.findIndex((distance) => distance.toLowerCase() === a.distance.toLowerCase());
+    const bi = order.findIndex((distance) => distance.toLowerCase() === b.distance.toLowerCase());
+    if (ai !== -1 || bi !== -1) return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+    return a.distance.localeCompare(b.distance, "sv");
+  });
+}
+
+function formatPbPace(distance: string, timeSeconds: number) {
+  const normalized = distance.toLowerCase();
+  let meters: number | null = null;
+
+  if (normalized.includes("1500")) meters = 1500;
+  else if (normalized.includes("3 km")) meters = 3000;
+  else if (normalized.includes("5 km")) meters = 5000;
+  else if (normalized.includes("10 km")) meters = 10000;
+  else if (normalized.includes("halv")) meters = 21097.5;
+  else if (normalized.includes("maraton")) meters = 42195;
+
+  if (!meters) return "";
+  const paceSeconds = timeSeconds / (meters / 1000);
+  const minutes = Math.floor(paceSeconds / 60);
+  const seconds = Math.round(paceSeconds % 60);
+  return `${minutes}:${String(seconds).padStart(2, "0")}/km`;
 }
 
 function CycleOverview({
@@ -2234,6 +3037,359 @@ const styles =
     viewToggleTextActive: {
       opacity: 1,
       color: "#1F2937",
+    },
+
+
+    profileToggleButton: {
+      paddingHorizontal: 14,
+    },
+
+    performanceView: {
+      width: "100%",
+      maxWidth: 1200,
+      alignSelf: "center",
+      gap: 14,
+    },
+
+    performanceIntro: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      justifyContent: "space-between",
+      marginBottom: 2,
+    },
+
+    performanceIntroText: {
+      flex: 1,
+    },
+
+    performanceTitle: {
+      marginTop: 4,
+      fontSize: 22,
+      fontWeight: "700",
+      color: "#172033",
+    },
+
+    performanceSubtitle: {
+      marginTop: 4,
+      fontSize: 13,
+      lineHeight: 19,
+      color: "#667085",
+    },
+
+    performanceSectionHeader: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      justifyContent: "space-between",
+      gap: 12,
+    },
+
+    performanceSectionTitle: {
+      marginTop: 3,
+      fontSize: 17,
+      fontWeight: "700",
+      color: "#172033",
+    },
+
+    smallActionButton: {
+      paddingHorizontal: 11,
+      paddingVertical: 7,
+      borderRadius: 8,
+      backgroundColor: "#F1F5F9",
+      borderWidth: 1,
+      borderColor: "#D7DEE8",
+    },
+
+    smallActionButtonText: {
+      fontSize: 12,
+      fontWeight: "700",
+      color: "#334155",
+    },
+
+    metricGrid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+      marginTop: 14,
+    },
+
+    performanceMetric: {
+      flexGrow: 1,
+      flexBasis: 145,
+      minWidth: 135,
+      padding: 12,
+      borderRadius: 10,
+      backgroundColor: "#F8FAFC",
+      borderWidth: 1,
+      borderColor: "#E2E8F0",
+    },
+
+    performanceMetricLabel: {
+      fontSize: 11,
+      color: "#64748B",
+      fontWeight: "700",
+    },
+
+    performanceMetricValue: {
+      marginTop: 4,
+      fontSize: 18,
+      fontWeight: "700",
+      color: "#172033",
+    },
+
+    testMetaRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 14,
+      marginTop: 9,
+    },
+
+    testMeta: {
+      fontSize: 12,
+      color: "#64748B",
+    },
+
+    testNotes: {
+      marginTop: 10,
+      fontSize: 13,
+      lineHeight: 19,
+      color: "#536174",
+    },
+
+    emptyPerformanceText: {
+      marginTop: 12,
+      fontSize: 13,
+      color: "#64748B",
+    },
+
+    performanceForm: {
+      marginTop: 16,
+      paddingTop: 14,
+      borderTopWidth: 1,
+      borderTopColor: "#E2E8F0",
+    },
+
+    formTwoColumns: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      columnGap: 10,
+    },
+
+    formField: {
+      flexGrow: 1,
+      flexBasis: 170,
+      minWidth: 145,
+    },
+
+    performanceInput: {
+      minHeight: 42,
+      paddingHorizontal: 11,
+      paddingVertical: 9,
+      borderRadius: 8,
+      backgroundColor: "#FFFFFF",
+      borderWidth: 1,
+      borderColor: "#D7DEE8",
+      color: "#172033",
+      fontSize: 14,
+    },
+
+    multilineInput: {
+      minHeight: 76,
+      textAlignVertical: "top",
+    },
+
+    notesInput: {
+      minHeight: 120,
+      marginTop: 12,
+      textAlignVertical: "top",
+    },
+
+    formActions: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+      marginTop: 14,
+    },
+
+    primaryActionButton: {
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderRadius: 8,
+      backgroundColor: "#172033",
+    },
+
+    primaryActionText: {
+      fontSize: 13,
+      fontWeight: "700",
+      color: "#FFFFFF",
+    },
+
+    secondaryActionButton: {
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderRadius: 8,
+      backgroundColor: "#F1F5F9",
+    },
+
+    secondaryActionText: {
+      fontSize: 13,
+      fontWeight: "700",
+      color: "#475569",
+    },
+
+    dangerActionButton: {
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderRadius: 8,
+      backgroundColor: "#FEF2F2",
+    },
+
+    dangerActionText: {
+      fontSize: 13,
+      fontWeight: "700",
+      color: "#B42318",
+    },
+
+    pbList: {
+      marginTop: 12,
+    },
+
+    pbRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      minHeight: 56,
+      paddingVertical: 8,
+      borderBottomWidth: 1,
+      borderBottomColor: "#E2E8F0",
+      gap: 10,
+    },
+
+    pbDistanceBlock: {
+      flex: 1,
+      minWidth: 100,
+    },
+
+    pbDistance: {
+      fontSize: 14,
+      fontWeight: "700",
+      color: "#172033",
+    },
+
+    pbDate: {
+      marginTop: 2,
+      fontSize: 11,
+      color: "#64748B",
+    },
+
+    pbTime: {
+      width: 72,
+      fontSize: 16,
+      fontWeight: "700",
+      color: "#172033",
+      textAlign: "right",
+    },
+
+    pbPace: {
+      width: 68,
+      fontSize: 11,
+      color: "#64748B",
+      textAlign: "right",
+    },
+
+    pbEditIcon: {
+      width: 18,
+      fontSize: 22,
+      color: "#94A3B8",
+      textAlign: "right",
+    },
+
+    standardDistanceList: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 7,
+      marginTop: 14,
+    },
+
+    distanceChip: {
+      paddingHorizontal: 10,
+      paddingVertical: 7,
+      borderRadius: 8,
+      backgroundColor: "#F8FAFC",
+      borderWidth: 1,
+      borderColor: "#D7DEE8",
+    },
+
+    distanceChipFilled: {
+      backgroundColor: "#F0F8F3",
+      borderColor: "#C7E5D1",
+    },
+
+    distanceChipText: {
+      fontSize: 11,
+      fontWeight: "600",
+      color: "#64748B",
+    },
+
+    distanceChipTextFilled: {
+      color: "#278653",
+      fontWeight: "700",
+    },
+
+    testHistoryList: {
+      marginTop: 10,
+    },
+
+    testHistoryRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      paddingVertical: 11,
+      borderBottomWidth: 1,
+      borderBottomColor: "#E2E8F0",
+    },
+
+    testHistoryDateBlock: {
+      width: 110,
+    },
+
+    testHistoryDate: {
+      fontSize: 12,
+      fontWeight: "700",
+      color: "#172033",
+    },
+
+    testHistoryMeta: {
+      marginTop: 2,
+      fontSize: 11,
+      color: "#64748B",
+    },
+
+    testHistoryValues: {
+      flex: 1,
+      gap: 3,
+    },
+
+    testHistoryValue: {
+      fontSize: 12,
+      color: "#475569",
+    },
+
+    historyDelete: {
+      fontSize: 21,
+      color: "#94A3B8",
+      paddingHorizontal: 4,
+    },
+
+    coachNotesText: {
+      marginTop: 12,
+      minHeight: 60,
+      fontSize: 14,
+      lineHeight: 21,
+      color: "#475569",
+    },
+
+    notesSaveButton: {
+      alignSelf: "flex-start",
+      marginTop: 10,
     },
 
     monthCalendar: {
