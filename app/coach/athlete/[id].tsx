@@ -178,6 +178,9 @@ export default function CoachAthleteScreen() {
   const [completedSessions, setCompletedSessions] =
     useState<Record<string, boolean>>({});
 
+  const [sessionRpe, setSessionRpe] =
+    useState<Record<string, number>>({});
+
   const [error, setError] =
     useState<string | null>(null);
 
@@ -217,6 +220,7 @@ export default function CoachAthleteScreen() {
     loadSessions();
     loadCycles();
     loadCompletedSessions();
+    loadSessionRpe();
     loadTrainingComments();
   }, [id]);
 
@@ -404,6 +408,34 @@ export default function CoachAthleteScreen() {
       setError("Kunde inte ta bort träningsperioden.");
     } finally {
       setSavingCycle(false);
+    }
+  }
+
+  async function loadSessionRpe() {
+    if (!id) {
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase.rpc(
+        "get_athlete_training_rpe",
+        {
+          p_athlete_id: id,
+        }
+      );
+
+      if (error) {
+        throw error;
+      }
+
+      setSessionRpe(
+        (data ?? {}) as Record<string, number>
+      );
+    } catch (rpeError) {
+      console.error(
+        "Kunde inte läsa Borg-skattningar:",
+        rpeError
+      );
     }
   }
 
@@ -1336,6 +1368,15 @@ export default function CoachAthleteScreen() {
                     />
 
                     {editingSession && (
+                      <TrainingFeedbackSummary
+                        completed={
+                          completedSessions[editingSession.id] === true
+                        }
+                        rpe={sessionRpe[editingSession.id] ?? null}
+                      />
+                    )}
+
+                    {editingSession && (
                       <TrainingCommentThread
                         session={editingSession}
                         comments={
@@ -1502,6 +1543,60 @@ export default function CoachAthleteScreen() {
   );
 }
 
+
+function TrainingFeedbackSummary({
+  completed,
+  rpe,
+}: {
+  completed: boolean;
+  rpe: number | null;
+}) {
+  return (
+    <View style={styles.feedbackSection}>
+      <View style={styles.feedbackHeader}>
+        <View>
+          <SectionLabel>ADEPTENS FEEDBACK</SectionLabel>
+          <BodyText style={styles.feedbackTitle}>
+            Hur passet upplevdes
+          </BodyText>
+        </View>
+
+        <View
+          style={[
+            styles.feedbackStatus,
+            completed
+              ? styles.feedbackStatusCompleted
+              : styles.feedbackStatusPending,
+          ]}
+        >
+          <BodyText style={styles.feedbackStatusText}>
+            {completed ? "Genomfört" : "Ej markerat"}
+          </BodyText>
+        </View>
+      </View>
+
+      <View style={styles.feedbackMetrics}>
+        <View style={styles.feedbackMetric}>
+          <BodyText style={styles.feedbackMetricLabel}>
+            BORG
+          </BodyText>
+          <BodyText style={styles.feedbackMetricValue}>
+            {rpe == null ? "–" : `${rpe}/20`}
+          </BodyText>
+        </View>
+
+        <View style={styles.feedbackMetric}>
+          <BodyText style={styles.feedbackMetricLabel}>
+            STATUS
+          </BodyText>
+          <BodyText style={styles.feedbackMetricValue}>
+            {completed ? "✓" : "–"}
+          </BodyText>
+        </View>
+      </View>
+    </View>
+  );
+}
 
 function TrainingCommentThread({
   session,
@@ -3641,6 +3736,78 @@ const styles =
     notesSaveButton: {
       alignSelf: "flex-start",
       marginTop: 10,
+    },
+
+    feedbackSection: {
+      marginTop: 16,
+      paddingTop: 15,
+      borderTopWidth: 1,
+      borderTopColor: "#E2E8F0",
+    },
+
+    feedbackHeader: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      justifyContent: "space-between",
+      gap: 10,
+    },
+
+    feedbackTitle: {
+      marginTop: 3,
+      fontSize: 15,
+      fontWeight: "700",
+      color: "#172033",
+    },
+
+    feedbackStatus: {
+      paddingHorizontal: 9,
+      paddingVertical: 5,
+      borderRadius: 999,
+      borderWidth: 1,
+    },
+
+    feedbackStatusCompleted: {
+      backgroundColor: "#F0F8F3",
+      borderColor: "#C7E5D1",
+    },
+
+    feedbackStatusPending: {
+      backgroundColor: "#F8FAFC",
+      borderColor: "#E2E8F0",
+    },
+
+    feedbackStatusText: {
+      fontSize: 10,
+      fontWeight: "700",
+      color: "#475569",
+    },
+
+    feedbackMetrics: {
+      flexDirection: "row",
+      gap: 8,
+      marginTop: 10,
+    },
+
+    feedbackMetric: {
+      flex: 1,
+      padding: 10,
+      borderRadius: 9,
+      backgroundColor: "#F8FAFC",
+      borderWidth: 1,
+      borderColor: "#E2E8F0",
+    },
+
+    feedbackMetricLabel: {
+      fontSize: 9,
+      fontWeight: "700",
+      color: "#64748B",
+    },
+
+    feedbackMetricValue: {
+      marginTop: 3,
+      fontSize: 18,
+      fontWeight: "700",
+      color: "#172033",
     },
 
     commentSection: {
