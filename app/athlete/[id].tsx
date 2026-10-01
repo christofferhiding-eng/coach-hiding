@@ -1,11 +1,13 @@
 import React, {
   useEffect,
+  useRef,
   useState,
 } from "react";
 
 import {
   ActivityIndicator,
   Pressable,
+  ScrollView,
   StyleSheet,
   TextInput,
   View,
@@ -170,6 +172,8 @@ export default function AthleteHomeScreen() {
     useWindowDimensions();
 
   const isDesktop = width >= 900;
+  const screenRef =
+  useRef<ScrollView>(null);
 
   const [athlete, setAthlete] =
     useState<AthleteProfile | null>(null);
@@ -998,7 +1002,7 @@ export default function AthleteHomeScreen() {
         }}
       />
 
-      <Screen>
+<Screen ref={screenRef}>
         <View
           style={[
             styles.header,
@@ -1322,8 +1326,22 @@ export default function AthleteHomeScreen() {
           </>
         )}
 
-        {viewMode !== "performance" && activeSelectedSession && (
-          <Card>
+{viewMode !== "performance" && activeSelectedSession && (
+  <View
+    onLayout={({ nativeEvent }) => {
+      if (!isDesktop) {
+        screenRef.current?.scrollTo({
+          y: Math.max(
+            nativeEvent.layout.y - 16,
+            0
+          ),
+          animated: true,
+        });
+      }
+    }}
+  >
+    <Card>
+    
             <View
               style={
                 styles.detailHeader
@@ -1628,6 +1646,7 @@ export default function AthleteHomeScreen() {
               )}
             </View>
           </Card>
+          </View>
         )}
       </Screen>
     </>
