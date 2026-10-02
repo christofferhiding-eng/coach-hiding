@@ -125,8 +125,11 @@ const CYCLE_TYPES: {
 ];
 
 export default function CoachAthleteScreen() {
-  const { id } =
-    useLocalSearchParams<{ id: string }>();
+  const { id, session } =
+  useLocalSearchParams<{
+    id: string;
+    session?: string;
+  }>();
 
   const router = useRouter();
 
@@ -592,7 +595,35 @@ export default function CoachAthleteScreen() {
           })
         );
 
-      setSessions(mapped);
+        setSessions(mapped);
+
+        if (mapped.length > 0) {
+          setWeekStart(
+            getMonday(
+              parseDate(
+                mapped[0].date
+              )
+            )
+          );
+        
+          if (session) {
+            const sessionToOpen =
+              mapped.find(
+                (item) =>
+                  item.id === session
+              );
+        
+            if (sessionToOpen) {
+              setSelectedDate(
+                sessionToOpen.date
+              );
+        
+              setEditingSession(
+                sessionToOpen
+              );
+            }
+          }
+        }
 
     } catch (error) {
       console.error(
