@@ -699,6 +699,8 @@ export default function CoachAthleteScreen() {
       setSaving(true);
       setError(null);
 
+      const isCreatingSession = !editingSession;
+
       if (editingSession) {
         const updatedSession: TrainingSession =
           {
@@ -774,6 +776,17 @@ export default function CoachAthleteScreen() {
       }
 
       await loadSessions();
+
+      // När ett nytt pass skapas visar vi automatiskt veckan
+      // som det nya passet tillhör. Vid redigering behåller vi
+      // den vecka som coachen redan befinner sig i.
+      if (isCreatingSession) {
+        setWeekStart(
+          getMonday(
+            parseDate(data.date)
+          )
+        );
+      }
 
       closePanel();
     } catch (error) {
