@@ -597,34 +597,31 @@ export default function CoachAthleteScreen() {
 
         setSessions(mapped);
 
-        if (mapped.length > 0) {
-          setWeekStart(
-            getMonday(
-              parseDate(
-                mapped[0].date
+        if (session) {
+          const sessionToOpen =
+            mapped.find(
+              (item) =>
+                item.id === session
+            );
+        
+          if (sessionToOpen) {
+            setWeekStart(
+              getMonday(
+                parseDate(
+                  sessionToOpen.date
+                )
               )
-            )
-          );
+            );
         
-          if (session) {
-            const sessionToOpen =
-              mapped.find(
-                (item) =>
-                  item.id === session
-              );
+            setSelectedDate(
+              sessionToOpen.date
+            );
         
-            if (sessionToOpen) {
-              setSelectedDate(
-                sessionToOpen.date
-              );
-        
-              setEditingSession(
-                sessionToOpen
-              );
-            }
+            setEditingSession(
+              sessionToOpen
+            );
           }
         }
-
     } catch (error) {
       console.error(
         "Kunde inte läsa träningsplanen:",
