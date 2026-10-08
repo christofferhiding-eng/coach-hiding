@@ -29,20 +29,92 @@ export default function ResetPasswordScreen() {
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    const { data: subscription } =
-      supabase.auth.onAuthStateChange((event) => {
-        if (event === "PASSWORD_RECOVERY") {
-          setReady(true);
-        }
-      });
+    let mounted = true;
 
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) {
+    async function initialiseRecovery() {
+      setError(null);
+
+      try {
+        // På web kan Supabase skicka tillbaka en PKCE-kod
+        // som måste bytas mot en session.
+        if (typeof window !== "undefined") {
+          const url = new URL(window.location.href);
+          const code = url.searchParams.get("code");
+
+          if (code) {
+            const { error: exchangeError } =
+              await supabase.auth.exchangeCodeForSession(code);
+
+            if (exchangeError) {
+              console.error(
+                "Kunde inte byta auth-kod mot session:",
+                exchangeError
+              );
+
+              if (mounted) {
+                setError(
+                  "Länken för lösenordsåterställning är ogiltig eller har gått ut. Begär en ny länk."
+                );
+              }
+
+              return;
+            }
+
+            // Ta bort ?code=... från adressfältet efter lyckad
+            // inloggning så att koden inte kan användas igen.
+            window.history.replaceState(
+              {},
+              document.title,
+              window.location.pathname
+            );
+          }
+        }
+
+        // Kontrollera att vi nu har en session.
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        if (mounted) {
+          setReady(!!session);
+
+          if (!session) {
+            setError(
+              "Länken kunde inte verifieras. Begär en ny länk för att återställa lösenordet."
+            );
+          }
+        }
+      } catch (initialiseError) {
+        console.error(
+          "Kunde inte initiera lösenordsåterställningen:",
+          initialiseError
+        );
+
+        if (mounted) {
+          setError(
+            "Något gick fel när återställningslänken skulle öppnas."
+          );
+        }
+      }
+    }
+
+    initialiseRecovery();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!mounted) return;
+
+      if (event === "PASSWORD_RECOVERY" && session) {
         setReady(true);
+        setError(null);
       }
     });
 
-    return () => subscription.subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   async function handleUpdatePassword() {
@@ -68,10 +140,16 @@ export default function ResetPasswordScreen() {
         });
 
       if (updateError) {
+        console.error(
+          "Kunde inte uppdatera lösenordet:",
+          updateError
+        );
+
         setError(
           updateError.message ||
             "Kunde inte uppdatera lösenordet."
         );
+
         return;
       }
 
@@ -83,10 +161,10 @@ export default function ResetPasswordScreen() {
       setConfirmPassword("");
 
       await supabase.auth.signOut();
-    } catch (e) {
+    } catch (updateError) {
       console.error(
         "Lösenordsuppdatering misslyckades:",
-        e
+        updateError
       );
 
       setError(
@@ -113,7 +191,7 @@ export default function ResetPasswordScreen() {
             Nytt lösenord
           </BodyText>
 
-          <View style={styles.inputRow}>
+          <View style={styles.passwordRow}>
             <TextInput
               value={password}
               onChangeText={setPassword}
@@ -123,20 +201,18 @@ export default function ResetPasswordScreen() {
               autoCapitalize="none"
               autoCorrect={false}
               autoComplete="new-password"
-              style={styles.inputWithToggle}
+              style={styles.passwordInput}
               editable={!loading}
             />
 
             <Pressable
               onPress={() =>
-                setShowPassword(
-                  (current) => !current
-                )
+                setShowPassword((current) => !current)
               }
               disabled={loading}
-              style={styles.toggleButton}
+              style={styles.visibilityButton}
             >
-              <BodyText style={styles.toggleText}>
+              <BodyText style={styles.visibilityText}>
                 {showPassword ? "Dölj" : "Visa"}
               </BodyText>
             </Pressable>
@@ -146,7 +222,7 @@ export default function ResetPasswordScreen() {
             Bekräfta lösenord
           </BodyText>
 
-          <View style={styles.inputRow}>
+          <View style={styles.passwordRow}>
             <TextInput
               value={confirmPassword}
               onChangeText={setConfirmPassword}
@@ -156,20 +232,18 @@ export default function ResetPasswordScreen() {
               autoCapitalize="none"
               autoCorrect={false}
               autoComplete="new-password"
-              style={styles.inputWithToggle}
+              style={styles.passwordInput}
               editable={!loading}
             />
 
             <Pressable
               onPress={() =>
-                setShowConfirmPassword(
-                  (current) => !current
-                )
+                setShowConfirmPassword((current) => !current)
               }
               disabled={loading}
-              style={styles.toggleButton}
+              style={styles.visibilityButton}
             >
-              <BodyText style={styles.toggleText}>
+              <BodyText style={styles.visibilityText}>
                 {showConfirmPassword ? "Dölj" : "Visa"}
               </BodyText>
             </Pressable>
@@ -189,10 +263,10 @@ export default function ResetPasswordScreen() {
 
           <Pressable
             onPress={handleUpdatePassword}
-            disabled={loading || !ready}
+            disabled={loading || !ready || !!message}
             style={[
               styles.button,
-              (loading || !ready) &&
+              (loading || !ready || !!message) &&
                 styles.buttonDisabled,
             ]}
           >
@@ -207,23 +281,18 @@ export default function ResetPasswordScreen() {
 
           {message && (
             <Pressable
-              onPress={() =>
-                router.replace("/login")
-              }
+              onPress={() => router.replace("/login")}
               style={styles.backButton}
             >
-              <BodyText
-                style={styles.backButtonText}
-              >
+              <BodyText style={styles.backButtonText}>
                 Tillbaka till inloggningen
               </BodyText>
             </Pressable>
           )}
 
-          {!ready && !message && (
+          {!ready && !message && !error && (
             <BodyText style={styles.info}>
-              Öppna sidan via länken i mejlet för
-              att välja ett nytt lösenord.
+              Verifierar återställningslänken...
             </BodyText>
           )}
         </View>
@@ -257,35 +326,35 @@ const styles = StyleSheet.create({
     color: Colors.text,
   },
 
-  inputRow: {
-    position: "relative",
-    width: "100%",
-    marginBottom: 20,
-  },
-
-  inputWithToggle: {
+  passwordRow: {
     width: "100%",
     height: 52,
-    paddingHorizontal: 16,
-    paddingRight: 70,
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 20,
     borderRadius: Radius.card,
     backgroundColor: "#FFFFFF",
     borderWidth: 1,
     borderColor: "#D5D5D5",
-    color: "#111111",
-    fontSize: 16,
   },
 
-  toggleButton: {
-    position: "absolute",
-    right: 14,
-    top: 0,
-    height: 52,
+  passwordInput: {
+    flex: 1,
+    height: "100%",
+    paddingHorizontal: 16,
+    color: "#111111",
+    fontSize: 16,
+    outlineStyle: "none",
+  } as any,
+
+  visibilityButton: {
+    paddingHorizontal: 16,
+    height: "100%",
     alignItems: "center",
     justifyContent: "center",
   },
 
-  toggleText: {
+  visibilityText: {
     color: Colors.primary,
     fontSize: 14,
     fontWeight: "600",
@@ -295,6 +364,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     color: "#C0392B",
     fontSize: 14,
+    lineHeight: 20,
   },
 
   message: {
