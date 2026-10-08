@@ -216,7 +216,7 @@ export default function LoginScreen() {
 
         router.replace(
 
-          \`/athlete/${profile.athlete_id}\`
+          `/athlete/${profile.athlete_id}`
 
         );
 
