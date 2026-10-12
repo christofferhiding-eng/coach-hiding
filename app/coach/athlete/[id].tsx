@@ -36,6 +36,7 @@ const TYPE_ICONS = {
   easy: "🟢",
   quality: "🔥",
   long: "🏃",
+  strength: "🏋️",
   rest: "⚪",
 };
 
@@ -967,168 +968,6 @@ export default function CoachAthleteScreen() {
           </View>
         </View>
 
-        <Card>
-          <View style={styles.cycleHeader}>
-            <View style={styles.cycleHeaderText}>
-              <SectionLabel>TRÄNINGSPERIODER</SectionLabel>
-              <BodyText style={styles.cycleIntro}>
-                Lägg till manuella perioder med egna start- och slutdatum.
-              </BodyText>
-            </View>
-            <Pressable
-              onPress={openNewCycleForm}
-              style={styles.cycleAddButton}
-            >
-              <BodyText style={styles.cycleAddButtonText}>+ Ny</BodyText>
-            </Pressable>
-          </View>
-
-          {cycles.length === 0 ? (
-            <BodyText style={styles.cycleEmpty}>
-              Inga träningsperioder har lagts till ännu.
-            </BodyText>
-          ) : (
-            <View style={styles.cycleList}>
-              {cycles.map((cycle) => (
-                <Pressable
-                  key={cycle.id}
-                  onPress={() => openEditCycleForm(cycle)}
-                  style={styles.cycleItem}
-                >
-                  <View style={styles.cycleItemText}>
-                    <BodyText style={styles.cycleType}>
-                      {getCycleTypeLabel(cycle.type)}
-                    </BodyText>
-                    <BodyText style={styles.cycleName}>
-                      {cycle.name}
-                    </BodyText>
-                    <BodyText style={styles.cycleDates}>
-                      {formatCycleDate(cycle.start_date)}–{formatCycleDate(cycle.end_date)}
-                    </BodyText>
-                    {cycle.description ? (
-                      <BodyText style={styles.cycleDescription}>
-                        {cycle.description}
-                      </BodyText>
-                    ) : null}
-                  </View>
-                  <BodyText style={styles.cycleEditIcon}>›</BodyText>
-                </Pressable>
-              ))}
-            </View>
-          )}
-
-          {showCycleForm && (
-            <View style={styles.cycleForm}>
-              <View style={styles.cycleFormTitleRow}>
-                <BodyText style={styles.cycleFormTitle}>
-                  {editingCycleId ? "Redigera träningsperiod" : "Ny träningsperiod"}
-                </BodyText>
-                <Pressable onPress={closeCycleForm}>
-                  <BodyText style={styles.cycleCloseText}>×</BodyText>
-                </Pressable>
-              </View>
-
-              <BodyText style={styles.inputLabel}>Typ</BodyText>
-              <View style={styles.cycleTypeOptions}>
-                {CYCLE_TYPES.map((option) => (
-                  <Pressable
-                    key={option.value}
-                    onPress={() =>
-                      setCycleForm((current) => ({
-                        ...current,
-                        type: option.value,
-                      }))
-                    }
-                    style={[
-                      styles.cycleTypeOption,
-                      cycleForm.type === option.value &&
-                        styles.cycleTypeOptionSelected,
-                    ]}
-                  >
-                    <BodyText
-                      style={[
-                        styles.cycleTypeOptionText,
-                        cycleForm.type === option.value &&
-                          styles.cycleTypeOptionTextSelected,
-                      ]}
-                    >
-                      {option.label}
-                    </BodyText>
-                  </Pressable>
-                ))}
-              </View>
-
-              <BodyText style={styles.inputLabel}>Namn</BodyText>
-              <TextInput
-                value={cycleForm.name}
-                onChangeText={(name) =>
-                  setCycleForm((current) => ({ ...current, name }))
-                }
-                placeholder="Exempelvis Grundträning 1"
-                placeholderTextColor="#8A94A6"
-                style={styles.cycleInput}
-              />
-
-              <BodyText style={styles.inputLabel}>Startdatum (ÅÅÅÅ-MM-DD)</BodyText>
-              <TextInput
-                value={cycleForm.startDate}
-                onChangeText={(startDate) =>
-                  setCycleForm((current) => ({ ...current, startDate }))
-                }
-                placeholder="2026-10-01"
-                placeholderTextColor="#8A94A6"
-                style={styles.cycleInput}
-                autoCapitalize="none"
-              />
-
-              <BodyText style={styles.inputLabel}>Slutdatum (ÅÅÅÅ-MM-DD)</BodyText>
-              <TextInput
-                value={cycleForm.endDate}
-                onChangeText={(endDate) =>
-                  setCycleForm((current) => ({ ...current, endDate }))
-                }
-                placeholder="2026-11-15"
-                placeholderTextColor="#8A94A6"
-                style={styles.cycleInput}
-                autoCapitalize="none"
-              />
-
-              <BodyText style={styles.inputLabel}>Beskrivning (valfritt)</BodyText>
-              <TextInput
-                value={cycleForm.description}
-                onChangeText={(description) =>
-                  setCycleForm((current) => ({ ...current, description }))
-                }
-                placeholder="Periodens fokus och syfte"
-                placeholderTextColor="#8A94A6"
-                style={[styles.cycleInput, styles.cycleDescriptionInput]}
-                multiline
-              />
-
-              <View style={styles.cycleFormActions}>
-                <Pressable
-                  onPress={handleSaveCycle}
-                  disabled={savingCycle}
-                  style={styles.cycleSaveButton}
-                >
-                  <BodyText style={styles.cycleSaveButtonText}>
-                    {savingCycle ? "Sparar..." : "Spara period"}
-                  </BodyText>
-                </Pressable>
-                {editingCycleId && (
-                  <Pressable
-                    onPress={handleDeleteCycle}
-                    disabled={savingCycle}
-                    style={styles.cycleDeleteButton}
-                  >
-                    <BodyText style={styles.cycleDeleteButtonText}>Ta bort</BodyText>
-                  </Pressable>
-                )}
-              </View>
-            </View>
-          )}
-        </Card>
-
         <View style={styles.viewToggle}>
           <Pressable
             onPress={() => switchView("week")}
@@ -1558,6 +1397,168 @@ export default function CoachAthleteScreen() {
           )}
           </>
         )}
+
+        <Card>
+          <View style={styles.cycleHeader}>
+            <View style={styles.cycleHeaderText}>
+              <SectionLabel>TRÄNINGSPERIODER</SectionLabel>
+              <BodyText style={styles.cycleIntro}>
+                Lägg till manuella perioder med egna start- och slutdatum.
+              </BodyText>
+            </View>
+            <Pressable
+              onPress={openNewCycleForm}
+              style={styles.cycleAddButton}
+            >
+              <BodyText style={styles.cycleAddButtonText}>+ Ny</BodyText>
+            </Pressable>
+          </View>
+
+          {cycles.length === 0 ? (
+            <BodyText style={styles.cycleEmpty}>
+              Inga träningsperioder har lagts till ännu.
+            </BodyText>
+          ) : (
+            <View style={styles.cycleList}>
+              {cycles.map((cycle) => (
+                <Pressable
+                  key={cycle.id}
+                  onPress={() => openEditCycleForm(cycle)}
+                  style={styles.cycleItem}
+                >
+                  <View style={styles.cycleItemText}>
+                    <BodyText style={styles.cycleType}>
+                      {getCycleTypeLabel(cycle.type)}
+                    </BodyText>
+                    <BodyText style={styles.cycleName}>
+                      {cycle.name}
+                    </BodyText>
+                    <BodyText style={styles.cycleDates}>
+                      {formatCycleDate(cycle.start_date)}–{formatCycleDate(cycle.end_date)}
+                    </BodyText>
+                    {cycle.description ? (
+                      <BodyText style={styles.cycleDescription}>
+                        {cycle.description}
+                      </BodyText>
+                    ) : null}
+                  </View>
+                  <BodyText style={styles.cycleEditIcon}>›</BodyText>
+                </Pressable>
+              ))}
+            </View>
+          )}
+
+          {showCycleForm && (
+            <View style={styles.cycleForm}>
+              <View style={styles.cycleFormTitleRow}>
+                <BodyText style={styles.cycleFormTitle}>
+                  {editingCycleId ? "Redigera träningsperiod" : "Ny träningsperiod"}
+                </BodyText>
+                <Pressable onPress={closeCycleForm}>
+                  <BodyText style={styles.cycleCloseText}>×</BodyText>
+                </Pressable>
+              </View>
+
+              <BodyText style={styles.inputLabel}>Typ</BodyText>
+              <View style={styles.cycleTypeOptions}>
+                {CYCLE_TYPES.map((option) => (
+                  <Pressable
+                    key={option.value}
+                    onPress={() =>
+                      setCycleForm((current) => ({
+                        ...current,
+                        type: option.value,
+                      }))
+                    }
+                    style={[
+                      styles.cycleTypeOption,
+                      cycleForm.type === option.value &&
+                        styles.cycleTypeOptionSelected,
+                    ]}
+                  >
+                    <BodyText
+                      style={[
+                        styles.cycleTypeOptionText,
+                        cycleForm.type === option.value &&
+                          styles.cycleTypeOptionTextSelected,
+                      ]}
+                    >
+                      {option.label}
+                    </BodyText>
+                  </Pressable>
+                ))}
+              </View>
+
+              <BodyText style={styles.inputLabel}>Namn</BodyText>
+              <TextInput
+                value={cycleForm.name}
+                onChangeText={(name) =>
+                  setCycleForm((current) => ({ ...current, name }))
+                }
+                placeholder="Exempelvis Grundträning 1"
+                placeholderTextColor="#8A94A6"
+                style={styles.cycleInput}
+              />
+
+              <BodyText style={styles.inputLabel}>Startdatum (ÅÅÅÅ-MM-DD)</BodyText>
+              <TextInput
+                value={cycleForm.startDate}
+                onChangeText={(startDate) =>
+                  setCycleForm((current) => ({ ...current, startDate }))
+                }
+                placeholder="2026-10-01"
+                placeholderTextColor="#8A94A6"
+                style={styles.cycleInput}
+                autoCapitalize="none"
+              />
+
+              <BodyText style={styles.inputLabel}>Slutdatum (ÅÅÅÅ-MM-DD)</BodyText>
+              <TextInput
+                value={cycleForm.endDate}
+                onChangeText={(endDate) =>
+                  setCycleForm((current) => ({ ...current, endDate }))
+                }
+                placeholder="2026-11-15"
+                placeholderTextColor="#8A94A6"
+                style={styles.cycleInput}
+                autoCapitalize="none"
+              />
+
+              <BodyText style={styles.inputLabel}>Beskrivning (valfritt)</BodyText>
+              <TextInput
+                value={cycleForm.description}
+                onChangeText={(description) =>
+                  setCycleForm((current) => ({ ...current, description }))
+                }
+                placeholder="Periodens fokus och syfte"
+                placeholderTextColor="#8A94A6"
+                style={[styles.cycleInput, styles.cycleDescriptionInput]}
+                multiline
+              />
+
+              <View style={styles.cycleFormActions}>
+                <Pressable
+                  onPress={handleSaveCycle}
+                  disabled={savingCycle}
+                  style={styles.cycleSaveButton}
+                >
+                  <BodyText style={styles.cycleSaveButtonText}>
+                    {savingCycle ? "Sparar..." : "Spara period"}
+                  </BodyText>
+                </Pressable>
+                {editingCycleId && (
+                  <Pressable
+                    onPress={handleDeleteCycle}
+                    disabled={savingCycle}
+                    style={styles.cycleDeleteButton}
+                  >
+                    <BodyText style={styles.cycleDeleteButtonText}>Ta bort</BodyText>
+                  </Pressable>
+                )}
+              </View>
+            </View>
+          )}
+        </Card>
 
         <CycleOverview
           cycles={cycles}
