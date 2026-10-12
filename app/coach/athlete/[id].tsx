@@ -1269,20 +1269,6 @@ export default function CoachAthleteScreen() {
           </BodyText>
         )}
 
-        <CycleOverview
-          cycles={cycles}
-          startDate={
-            viewMode === "week"
-              ? weekStart
-              : monthStart
-          }
-          endDate={
-            viewMode === "week"
-              ? addDays(weekStart, 6)
-              : getMonthEnd(monthStart)
-          }
-        />
-
         {loading ? (
           <View
             style={styles.loading}
@@ -1572,6 +1558,20 @@ export default function CoachAthleteScreen() {
           )}
           </>
         )}
+
+        <CycleOverview
+          cycles={cycles}
+          startDate={
+            viewMode === "week"
+              ? weekStart
+              : monthStart
+          }
+          endDate={
+            viewMode === "week"
+              ? addDays(weekStart, 6)
+              : getMonthEnd(monthStart)
+          }
+        />
 
         {viewMode === "profile" && (
           <AthletePerformanceView

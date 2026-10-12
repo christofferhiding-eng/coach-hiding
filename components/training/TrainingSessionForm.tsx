@@ -83,6 +83,10 @@ const types: {
     label: "Långpass",
   },
   {
+    value: "strength",
+    label: "Alternativ/styrka",
+  },
+  {
     value: "rest",
     label: "Vila",
   },
